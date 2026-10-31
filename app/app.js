@@ -1,4 +1,5 @@
 import * as db from './db.js';
+import * as sync from './sync.js';
 
 const SERVICES = ['Coupe & coiffage', 'Coloration', 'Lissage', 'Soin', 'Barbe', 'Massage', 'Visagiste', 'Diagnostic'];
 const CLIENT_IDLE_MS = 2 * 60 * 1000;
@@ -46,7 +47,7 @@ const S = {
   photoCache: new Map(), // visitId -> photos (miniatures de l'historique)
   idleReturn: null, // élément à refocaliser après « Je continue »
   validated: '', // nom du dernier client qui a validé sa fiche
-  modal: null, // { type: 'client' | 'export' | 'confirm-delete' | 'photo', ... }
+  modal: null, // { type: 'client' | 'backup' | 'confirm-delete' | 'photo', ... }
   modalReturn: null // élément à refocaliser à la fermeture
 };
 
@@ -195,7 +196,8 @@ const ICONS = {
   trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   tablet: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M11 18h2"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
-  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/>'
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/>',
+  cloud: '<path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 10.5 3.75 3.75 0 0 1 17.25 18z"/>'
 };
 
 const icon = (name, size = 20) =>
@@ -377,7 +379,7 @@ function viewCoiffeur() {
       <div class="top-actions">
         <span class="muted today">${fmtToday()}</span>
         <button type="button" class="btn btn-quiet" data-action="change-pin">${icon('key', 18)} Changer le code</button>
-        <button type="button" class="btn btn-quiet" data-action="export">${icon('download', 18)} Exporter</button>
+        <button type="button" class="btn btn-quiet" data-action="backup">${icon('cloud', 18)} Sauvegarde</button>
         <button type="button" class="btn btn-ghost" data-action="lock">${icon('lock', 18)} Verrouiller</button>
       </div>
     </header>
@@ -680,6 +682,28 @@ function viewThanks() {
   </main>`;
 }
 
+// ---------- Sauvegarde en ligne ----------
+
+const needsLogin = (st) => st.state === 'off' || st.state === 'auth';
+const whenSynced = (iso) => (isToday(iso) ? `à ${fmtTime(iso)}` : `le ${fmtDayShort(iso)} à ${fmtTime(iso)}`);
+const waiting = (n) => (n ? `${n} modification${n > 1 ? 's' : ''} en attente d’envoi.` : '');
+
+function syncLine(st) {
+  if (st.state === 'syncing') return 'Synchronisation en cours…';
+  if (st.state === 'offline') return `Hors ligne : les fiches restent sur la tablette et partiront au retour du réseau. ${waiting(st.pending)}`.trim();
+  if (st.state === 'error') return `La dernière sauvegarde n’a pas abouti, nouvel essai dans quelques minutes. ${waiting(st.pending)} (détail : ${st.error})`;
+  if (st.state === 'auth') return 'La connexion au compte a expiré : reconnectez-vous pour reprendre la sauvegarde.';
+  if (st.pending) return waiting(st.pending);
+  return st.lastAt ? `Tout est sauvegardé. Dernière synchro ${whenSynced(st.lastAt)}.` : 'Connecté. Première synchro en cours.';
+}
+
+function loginError(err) {
+  if (err instanceof TypeError || !navigator.onLine) return 'Pas de connexion Internet. Réessayez une fois connecté.';
+  if (err.code === 'email_not_confirmed') return 'Ce compte n’est pas encore confirmé.';
+  if (err.status === 400) return 'E-mail ou mot de passe incorrect.';
+  return `Connexion impossible pour l’instant (${err.message}).`;
+}
+
 function viewModal() {
   const m = S.modal;
   let body = '';
@@ -705,16 +729,41 @@ function viewModal() {
           <button type="submit" class="btn btn-accent" id="client-submit">${c.id ? 'Enregistrer' : 'Créer la fiche'}</button>
         </div>
       </form>`;
-  } else if (m.type === 'export') {
+  } else if (m.type === 'backup') {
+    const st = sync.getStatus();
+    const online = needsLogin(st)
+      ? `${st.state === 'auth' ? `<p class="sync-status err" id="sync-status">${esc(syncLine(st))}</p>` : '<p class="muted">Pas encore activée sur cette tablette. Avec le compte du salon, les fiches sont copiées en ligne et se retrouvent sur une autre tablette.</p>'}
+        <form data-form="login" class="backup-login" novalidate>
+          <div class="grid2">
+            ${inputField('field', 'email', 'E-mail du compte', 'email', st.email, 'inputmode="email" autocomplete="username" data-autofocus')}
+            ${inputField('field', 'password', 'Mot de passe', 'password', '', 'autocomplete="current-password"')}
+          </div>
+          <p class="err err-inline" id="login-err" role="alert"></p>
+          <div class="form-actions"><button type="submit" class="btn btn-accent">Se connecter</button></div>
+        </form>`
+      : `<p class="sync-status" id="sync-status">${esc(syncLine(st))}</p>
+        <p class="muted small">Compte : ${esc(st.email)}</p>
+        <div class="export-btns">
+          <button type="button" class="btn btn-ghost" data-action="sync-now" data-autofocus>${icon('cloud', 18)} Synchroniser maintenant</button>
+          <button type="button" class="btn btn-quiet" data-action="sign-out">Se déconnecter</button>
+        </div>`;
     body = `
       <div class="dialog">
-        <h2 class="serif" id="dlg-title">Exporter</h2>
-        <p class="muted">Fichiers CSV qui s'ouvrent dans Excel. Ils arrivent dans le dossier « Téléchargements » de la tablette.</p>
-        <div class="export-btns">
-          <button type="button" class="btn btn-ghost btn-lg" data-action="export-clients" data-autofocus>${icon('download', 18)} Fiches clients</button>
-          <button type="button" class="btn btn-ghost btn-lg" data-action="export-visits">${icon('download', 18)} Historique des visites</button>
-        </div>
-        <p class="muted small">Les photos ne sont pas incluses dans l'export.</p>
+        <h2 class="serif" id="dlg-title">Sauvegarde</h2>
+        <section class="dlg-section" aria-labelledby="sec-online">
+          <h3 class="label" id="sec-online">En ligne</h3>
+          ${online}
+          <p class="muted small">Les clients qui n’ont pas encore donné leur accord restent sur la tablette.</p>
+        </section>
+        <section class="dlg-section" aria-labelledby="sec-export">
+          <h3 class="label" id="sec-export">Exporter</h3>
+          <p class="muted">Fichiers CSV qui s'ouvrent dans Excel. Ils arrivent dans le dossier « Téléchargements » de la tablette.</p>
+          <div class="export-btns">
+            <button type="button" class="btn btn-ghost btn-lg" data-action="export-clients">${icon('download', 18)} Fiches clients</button>
+            <button type="button" class="btn btn-ghost btn-lg" data-action="export-visits">${icon('download', 18)} Historique des visites</button>
+          </div>
+          <p class="muted small">Les photos ne sont pas incluses dans l'export.</p>
+        </section>
         <div class="form-actions"><button type="button" class="btn btn-ghost" data-action="close-modal">Fermer</button></div>
       </div>`;
   } else if (m.type === 'no-consent') {
@@ -1083,7 +1132,15 @@ const actions = {
     S.pin = { mode: 'new', entry: '', first: '', error: '', next: () => go('coiffeur'), cancel: () => go('coiffeur') };
     go('pin');
   },
-  export: () => openModal({ type: 'export' }),
+  backup: () => openModal({ type: 'backup' }),
+  'sync-now': async () => {
+    await sync.syncNow();
+    announce(syncLine(sync.getStatus()));
+  },
+  'sign-out': async () => {
+    await sync.signOut();
+    toast('Sauvegarde en ligne arrêtée sur cette tablette');
+  },
   'export-clients': exportClients,
   'export-visits': exportVisits,
   select: async (el) => {
@@ -1349,6 +1406,25 @@ app.addEventListener('submit', async (e) => {
     toast(isNew ? 'Fiche créée' : 'Fiche enregistrée');
   }
 
+  if (form.dataset.form === 'login') {
+    const errors = {};
+    if (!EMAIL_RE.test(val('email'))) errors.email = 'Indiquez l’e-mail du compte du salon.';
+    if (!data.password) errors.password = 'Indiquez le mot de passe.';
+    if (showErrors(form, errors)) return;
+    const btn = form.querySelector('[type="submit"]');
+    const msg = form.querySelector('#login-err');
+    btn.disabled = true;
+    msg.textContent = '';
+    try {
+      await sync.signIn(val('email'), data.password);
+      toast('Sauvegarde en ligne activée');
+    } catch (err) {
+      btn.disabled = false;
+      msg.textContent = loginError(err);
+      form.elements.password.select();
+    }
+  }
+
   if (form.dataset.form === 'checkout') {
     // Sans accord RGPD, rien n'est conservé (après confirmation) : inutile d'exiger le nom.
     if (!data.consent) {
@@ -1445,10 +1521,45 @@ window.addEventListener('popstate', () => {
   else if (S.modal) closeModal();
 });
 
+// ---------- Synchro ----------
+
+// La fenêtre Sauvegarde ouverte suit l'état ; une connexion expirée est signalée une fois au coiffeur.
+let authNoticed = false;
+sync.subscribe((st) => {
+  if (st.state === 'auth' && !authNoticed) {
+    authNoticed = true;
+    const notice = { text: 'La sauvegarde en ligne est interrompue : reconnectez-vous dans « Sauvegarde ».' };
+    if (S.view === 'coiffeur') {
+      addNotice(notice);
+      if (!S.modal) render();
+    } else S.notices.push(notice);
+  } else if (st.state !== 'auth') authNoticed = false;
+  if (S.modal?.type !== 'backup') return;
+  if (Boolean(app.querySelector('[data-form="login"]')) !== needsLogin(st)) {
+    render();
+    return;
+  }
+  const line = app.querySelector('#sync-status');
+  if (line) line.textContent = syncLine(st);
+});
+
+// Données arrivées d'en ligne (restauration sur une autre tablette) : liste et fiche affichée remises à jour.
+async function onPulled() {
+  await loadClients();
+  S.photoCache.clear();
+  if (S.clientId) {
+    S.client = await db.getClient(S.clientId);
+    if (S.client) await loadHistory();
+    else S.clientId = null;
+  }
+  if (S.view === 'coiffeur' && !S.modal) render();
+}
+
 // ---------- Démarrage ----------
 
 (async function boot() {
   if (navigator.storage?.persist) navigator.storage.persist();
+  sync.start(onPulled);
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');
   const pinLock = await db.getSetting('pinLock');
   if (pinLock) {

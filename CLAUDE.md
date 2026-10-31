@@ -10,10 +10,12 @@ Répondre en français. Le besoin et les règles métier sont dans [CAHIER_DES_C
     - Bandeaux du coiffeur : `addNotice()` / `dropNotices()` ; ceux liés à une visite (`visitId`) disparaissent quand elle est validée ou effacée.
     - Annonces lecteur d'écran : `announce()` (zone `#announce`) et `toast()` (zone `#toast`, hors de `#app`).
     - PIN oublié : code de déblocage à 8 chiffres connu du seul installateur ; seule son empreinte est dans `RECOVERY_HASH`.
-  - `db.js` : stockage IndexedDB (clients, visites, photos avec miniature `thumb`, réglages dont `pinHash` et `pinLock`).
+  - `db.js` : stockage IndexedDB (clients, visites, photos avec miniature `thumb`, réglages dont `pinHash` et `pinLock`). Toute écriture locale pose `dirty: 1` ; les effacements vont dans le magasin `deletions`. Changer la structure = nouvelle `DB_VERSION` avec migration dans `onupgradeneeded`.
+  - `sync.js` : sauvegarde Supabase en REST direct (pas de bibliothèque). Envoie `dirty` + effacements, puis récupère les nouveautés (`synced_at` posé par le serveur). Les clients sans `consentAt` ne partent jamais en ligne. Connexion dans la fenêtre « Sauvegarde ».
   - `sw.js` : hors-ligne. **Incrémenter `CACHE` à chaque mise en ligne**, sinon la tablette garde l'ancienne version.
   - `fonts/` : polices variables auto-hébergées (un fichier par famille et sous-ensemble ; pas de Google Fonts, pour le hors-ligne).
-- Chaque enregistrement a `syncedAt` : prévu pour la synchro Supabase (étape 2).
+- Supabase : tables et règles d'accès dans [supabase/schema.sql](supabase/schema.sql) (à coller dans le SQL Editor). Un compte = les données d'un salon ; inscriptions fermées.
+- En ligne : GitHub Pages, publié par `.github/workflows/pages.yml` à chaque push sur `main`. Chaque push arrive directement sur la tablette du coiffeur : tester avant.
 - Textes de l'interface en français, avec espaces insécables fines avant `? ! :` ; pas d'emoji, icônes SVG en ligne (`ICONS`).
 
 ## Lancer et tester
