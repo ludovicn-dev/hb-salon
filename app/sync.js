@@ -13,7 +13,8 @@ const EVERY_MS = 5 * 60 * 1000;
 const PAGE = 500;
 
 // state : 'off' (pas connecté) | 'idle' | 'syncing' | 'offline' | 'error' | 'auth' (à reconnecter)
-const status = { state: 'off', email: '', lastAt: null, pending: 0, error: '' };
+// failures : échecs d'affilée (pour signaler une panne qui dure).
+const status = { state: 'off', email: '', lastAt: null, pending: 0, error: '', failures: 0 };
 let session = null;
 let running = null;
 let queued = null;
@@ -75,7 +76,7 @@ export async function signOut() {
   session = null;
   await db.setSetting('supaSession', null);
   await db.setSetting('syncCursor', null);
-  set({ state: 'off', email: '', error: '' });
+  set({ state: 'off', email: '', error: '', failures: 0 });
   if (token) fetch(`${URL_}/auth/v1/logout`, { method: 'POST', headers: { apikey: KEY, Authorization: `Bearer ${token}` } }).catch(() => {});
 }
 
@@ -345,14 +346,17 @@ async function run() {
   try {
     await push();
     const pulled = await pull();
-    set({ state: 'idle', lastAt: new Date().toISOString(), pending: await countPending(), error: '' });
+    set({ state: 'idle', lastAt: new Date().toISOString(), pending: await countPending(), error: '', failures: 0 });
     await db.setSetting('syncLastAt', status.lastAt);
     if (pulled) onPulled();
   } catch (err) {
     const pending = await countPending().catch(() => status.pending);
     if (err.auth) set({ state: 'auth', pending });
     else if (err instanceof TypeError || !navigator.onLine) set({ state: 'offline', pending });
-    else set({ state: 'error', pending, error: err.message });
+    else {
+      console.warn('Sauvegarde en ligne :', err);
+      set({ state: 'error', pending, error: err.message, failures: status.failures + 1 });
+    }
   }
 }
 

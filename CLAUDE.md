@@ -9,18 +9,19 @@ Répondre en français. Le besoin et les règles métier sont dans [CAHIER_DES_C
     - Brouillons de visite par client dans `S.drafts` (mémoire seulement) ; `parkDraft()` avant de changer de client ou de passer la tablette.
     - Bandeaux du coiffeur : `addNotice()` / `dropNotices()` ; ceux liés à une visite (`visitId`) disparaissent quand elle est validée ou effacée.
     - Annonces lecteur d'écran : `announce()` (zone `#announce`) et `toast()` (zone `#toast`, hors de `#app`).
-    - PIN oublié : code de déblocage à 8 chiffres connu du seul installateur ; seule son empreinte est dans `RECOVERY_HASH`.
+    - PIN oublié : code de déblocage à 8 chiffres connu du seul installateur. app.js étant public, seule son empreinte PBKDF2 y figure (`RECOVERY_SALT`, `RECOVERY_ITER`, `RECOVERY_HASH`) ; ne jamais revenir à un simple SHA-256.
   - `db.js` : stockage IndexedDB (clients, visites, photos avec miniature `thumb`, réglages dont `pinHash` et `pinLock`). Toute écriture locale pose `dirty: 1` ; les effacements vont dans le magasin `deletions`. Changer la structure = nouvelle `DB_VERSION` avec migration dans `onupgradeneeded`.
   - `sync.js` : sauvegarde Supabase en REST direct (pas de bibliothèque). Envoie `dirty` + effacements, puis récupère les nouveautés (`synced_at` posé par le serveur). Les clients sans `consentAt` ne partent jamais en ligne. Connexion dans la fenêtre « Sauvegarde ».
   - `sw.js` : hors-ligne. **Incrémenter `CACHE` à chaque mise en ligne**, sinon la tablette garde l'ancienne version.
   - `fonts/` : polices variables auto-hébergées (un fichier par famille et sous-ensemble ; pas de Google Fonts, pour le hors-ligne).
-- Supabase : tables et règles d'accès dans [supabase/schema.sql](supabase/schema.sql) (à coller dans le SQL Editor). Un compte = les données d'un salon ; inscriptions fermées.
+- Supabase : tables et règles d'accès dans [supabase/schema.sql](supabase/schema.sql) (à coller dans le SQL Editor). Un compte = les données d'un salon ; inscriptions fermées, comptes créés à la main dans le tableau de bord. Plan gratuit : pas de sauvegarde automatique de la base, pause après 7 jours sans activité.
 - En ligne : GitHub Pages, publié par `.github/workflows/pages.yml` à chaque push sur `main`. Chaque push arrive directement sur la tablette du coiffeur : tester avant.
-- Textes de l'interface en français, avec espaces insécables fines avant `? ! :` ; pas d'emoji, icônes SVG en ligne (`ICONS`).
+- Textes de l'interface en français, avec espace fine insécable (U+202F) avant `? ! :` et insécable (U+00A0) à l'intérieur des « » ; pas d'emoji, icônes SVG en ligne (`ICONS`). Ces caractères font échouer les remplacements exacts tapés à la main : les copier depuis le fichier.
 
 ## Lancer et tester
 - `npx http-server -p 8080 -c-1` dans `app/`, puis http://localhost:8080.
 - Pas de tablette sous la main : tester avec Playwright en 1280×800 (paysage) et 800×1280 (portrait), dans un contexte isolé (`browser().newContext()`) pour ne pas mélanger les données IndexedDB ; `page.clock.install()` pour les minuteurs (2 min client, 10 min coiffeur).
+- Synchro : tester avec un compte Supabase de test créé pour l'occasion (puis vidé et supprimé), jamais avec celui du coiffeur ; deux contextes isolés = deux tablettes.
 - Révisions design : `/impeccable critique` ; rapports dans [.impeccable/critique/](.impeccable/critique/).
 
 ## Design « Élégance »

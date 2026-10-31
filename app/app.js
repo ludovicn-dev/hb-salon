@@ -42,7 +42,7 @@ const S = {
   checkout: null, // saisie du client, gardée si l'écran est redessiné
   thanksName: '',
   thanksNote: '',
-  notices: [], // { text, visitId?, clientId? } : restent affichés au coiffeur jusqu'à « Compris »
+  notices: [], // { text, visitId?, clientId?, sync?, action?, label? } : restent affichés au coiffeur jusqu'à « Compris »
   autoLocked: false,
   photoCache: new Map(), // visitId -> photos (miniatures de l'historique)
   idleReturn: null, // élément à refocaliser après « Je continue »
@@ -89,7 +89,7 @@ function ago(iso) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const days = Math.round((today - start) / 86400000);
-  if (days <= 0) return "aujourd'hui";
+  if (days <= 0) return 'aujourd’hui';
   if (days === 1) return 'hier';
   if (days < 14) return `il y a ${days} j`;
   if (days < 60) return `il y a ${Math.round(days / 7)} sem.`;
@@ -197,7 +197,8 @@ const ICONS = {
   tablet: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M11 18h2"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/>',
-  cloud: '<path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 10.5 3.75 3.75 0 0 1 17.25 18z"/>'
+  cloud: '<path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 10.5 3.75 3.75 0 0 1 17.25 18z"/>',
+  cloudOff: '<path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 10.5 3.75 3.75 0 0 1 17.25 18z"/><path d="M4 4l16 16"/>'
 };
 
 const icon = (name, size = 20) =>
@@ -275,6 +276,7 @@ function askPin(next, cancel) {
 }
 
 function openModal(modal) {
+  hideToast();
   S.modalReturn = selectorOf(document.activeElement);
   S.modal = modal;
   render();
@@ -379,7 +381,7 @@ function viewCoiffeur() {
       <div class="top-actions">
         <span class="muted today">${fmtToday()}</span>
         <button type="button" class="btn btn-quiet" data-action="change-pin">${icon('key', 18)} Changer le code</button>
-        <button type="button" class="btn btn-quiet" data-action="backup">${icon('cloud', 18)} Sauvegarde</button>
+        <button type="button" class="${backupClass()}" data-action="backup" id="backup-btn">${backupLabel()}</button>
         <button type="button" class="btn btn-ghost" data-action="lock">${icon('lock', 18)} Verrouiller</button>
       </div>
     </header>
@@ -414,7 +416,7 @@ function searchClients() {
 
 function viewResults() {
   const list = searchClients();
-  if (!S.clients.length) return `<p class="muted small pad">Aucune fiche pour l'instant.</p>`;
+  if (!S.clients.length) return `<p class="muted small pad">Aucune fiche pour l’instant.</p>`;
   if (!list.length) return `<p class="muted small pad">Aucun client trouvé.</p>`;
   return (
     (S.query ? '' : `<p class="label small-label">Récents</p>`) +
@@ -463,7 +465,8 @@ const viewNotices = () =>
   S.notices
     .map((n, i) => {
       if (n.visitId ? n.clientId === S.clientId : S.client) return '';
-      return `<div class="notice">${icon(n.visitId ? 'clock' : 'info', 20)}<span>${esc(n.text)}</span>
+      return `<div class="notice">${icon(n.visitId ? 'clock' : n.sync ? 'cloudOff' : 'info', 20)}<span>${esc(n.text)}</span>
+        ${n.action ? `<button type="button" class="btn btn-sm btn-ghost" data-action="${n.action}">${n.label}</button>` : ''}
         ${n.visitId ? `<button type="button" class="btn btn-sm btn-accent" data-action="rehand-notice" data-index="${i}">${icon('tablet', 16)} Repasser la tablette</button>` : ''}
         <button type="button" class="btn btn-sm btn-ghost" data-action="dismiss-notice" data-index="${i}">Compris</button></div>`;
     })
@@ -658,7 +661,7 @@ function viewClient() {
         <label class="consent">
           <input type="checkbox" name="consent" ${c.consent ? 'checked' : ''}>
           <span class="box">${icon('check', 18)}</span>
-          <span>J'accepte que H&amp;B Salon conserve ma fiche (coordonnées et historique de mes visites) pour mieux me conseiller.
+          <span>J’accepte que H&amp;B Salon conserve ma fiche (coordonnées et historique de mes visites) pour mieux me conseiller.
           <small>Facultatif : sans votre accord, votre fiche n’est pas conservée. Vous pouvez demander à tout moment au salon de la modifier ou de la supprimer.</small></span>
         </label>
         <div class="form-actions form-actions-end">
@@ -684,24 +687,58 @@ function viewThanks() {
 
 // ---------- Sauvegarde en ligne ----------
 
+const DAY_MS = 24 * 60 * 60 * 1000;
 const needsLogin = (st) => st.state === 'off' || st.state === 'auth';
 const whenSynced = (iso) => (isToday(iso) ? `à ${fmtTime(iso)}` : `le ${fmtDayShort(iso)} à ${fmtTime(iso)}`);
-const waiting = (n) => (n ? `${n} modification${n > 1 ? 's' : ''} en attente d’envoi.` : '');
+const waiting = (n) => (n ? `${n} modification${n > 1 ? 's' : ''} en attente d’envoi` : '');
+const lastLine = (st) => (st.lastAt ? `Dernière sauvegarde ${whenSynced(st.lastAt)}.` : '');
 
-function syncLine(st) {
-  if (st.state === 'syncing') return 'Synchronisation en cours…';
-  if (st.state === 'offline') return `Hors ligne : les fiches restent sur la tablette et partiront au retour du réseau. ${waiting(st.pending)}`.trim();
-  if (st.state === 'error') return `La dernière sauvegarde n’a pas abouti, nouvel essai dans quelques minutes. ${waiting(st.pending)} (détail : ${st.error})`;
-  if (st.state === 'auth') return 'La connexion au compte a expiré : reconnectez-vous pour reprendre la sauvegarde.';
-  if (st.pending) return waiting(st.pending);
-  return st.lastAt ? `Tout est sauvegardé. Dernière synchro ${whenSynced(st.lastAt)}.` : 'Connecté. Première synchro en cours.';
+// Ce qu'on dit au coiffeur pour chaque état : ton (couleur), icône, titre, détail.
+function syncView(st) {
+  const pend = st.pending ? ` ${cap(waiting(st.pending))}.` : '';
+  if (st.state === 'off') {
+    return { tone: 'off', icon: 'cloudOff', title: 'Sauvegarde en ligne non activée', detail: 'Avec le compte du salon, les fiches des clients qui ont donné leur accord sont copiées en ligne et se retrouvent sur une autre tablette.' };
+  }
+  if (st.state === 'auth') {
+    return { tone: 'error', icon: 'key', title: 'Connexion au compte expirée', detail: 'Retapez le mot de passe du compte du salon pour reprendre la sauvegarde. En attendant, les fiches restent sur la tablette.' };
+  }
+  if (st.state === 'syncing') return { tone: 'busy', icon: 'cloud', title: 'Sauvegarde en cours…', detail: lastLine(st) || 'Première copie de toutes les fiches.' };
+  if (st.state === 'offline') {
+    return { tone: 'wait', icon: 'clock', title: 'Hors ligne', detail: `Les fiches restent sur la tablette et partiront au retour du réseau.${pend} ${lastLine(st)}`.trim() };
+  }
+  if (st.state === 'error') {
+    return { tone: 'error', icon: 'cloudOff', title: 'La sauvegarde ne passe pas', detail: `Les fiches sont bien sur la tablette et l’appli réessaie toute seule. Si ça dure plus d’un jour, prévenez la personne qui a installé l’appli.${pend}` };
+  }
+  if (st.pending) return { tone: 'wait', icon: 'clock', title: cap(waiting(st.pending)), detail: 'Envoi automatique dans quelques secondes.' };
+  return { tone: 'ok', icon: 'check', title: 'Tout est sauvegardé', detail: lastLine(st) };
+}
+
+const syncStateInner = (v) =>
+  `${icon(v.icon, 22)}<span class="sync-text"><span class="sync-title">${esc(v.title)}</span>${v.detail ? `<span class="sync-detail">${esc(v.detail)}</span>` : ''}</span>`;
+
+// Le bouton de la barre du haut ne se signale que s'il faut agir ou s'inquiéter.
+function syncAttention(st) {
+  if (st.state === 'error' || st.state === 'auth') return 'error';
+  if (st.state === 'offline' && (st.pending || !st.lastAt || Date.now() - new Date(st.lastAt) > DAY_MS)) return 'wait';
+  return null;
+}
+
+function backupClass(st = sync.getStatus()) {
+  const a = syncAttention(st);
+  return `btn btn-quiet${a ? ` backup-${a}` : ''}`;
+}
+
+function backupLabel(st = sync.getStatus()) {
+  const a = syncAttention(st);
+  const hint = { error: 'à vérifier', wait: 'envoi en attente' }[a];
+  return `${icon(a === 'error' ? 'cloudOff' : a === 'wait' ? 'clock' : 'cloud', 18)} Sauvegarde${hint ? `<span class="sr-only"> : ${hint}</span>` : ''}`;
 }
 
 function loginError(err) {
   if (err instanceof TypeError || !navigator.onLine) return 'Pas de connexion Internet. Réessayez une fois connecté.';
   if (err.code === 'email_not_confirmed') return 'Ce compte n’est pas encore confirmé.';
   if (err.status === 400) return 'E-mail ou mot de passe incorrect.';
-  return `Connexion impossible pour l’instant (${err.message}).`;
+  return 'Connexion impossible pour l’instant. Réessayez dans quelques minutes.';
 }
 
 function viewModal() {
@@ -731,40 +768,52 @@ function viewModal() {
       </form>`;
   } else if (m.type === 'backup') {
     const st = sync.getStatus();
+    const v = syncView(st);
     const online = needsLogin(st)
-      ? `${st.state === 'auth' ? `<p class="sync-status err" id="sync-status">${esc(syncLine(st))}</p>` : '<p class="muted">Pas encore activée sur cette tablette. Avec le compte du salon, les fiches sont copiées en ligne et se retrouvent sur une autre tablette.</p>'}
-        <form data-form="login" class="backup-login" novalidate>
+      ? `<form data-form="login" class="backup-login" novalidate>
           <div class="grid2">
-            ${inputField('field', 'email', 'E-mail du compte', 'email', st.email, 'inputmode="email" autocomplete="username" data-autofocus')}
-            ${inputField('field', 'password', 'Mot de passe', 'password', '', 'autocomplete="current-password"')}
+            ${inputField('field', 'email', 'E-mail du compte du salon', 'email', st.email, `inputmode="email" autocomplete="username"${st.email ? '' : ' data-autofocus'}`)}
+            ${inputField('field', 'password', 'Mot de passe', 'password', '', `autocomplete="current-password"${st.email ? ' data-autofocus' : ''}`)}
           </div>
           <p class="err err-inline" id="login-err" role="alert"></p>
           <div class="form-actions"><button type="submit" class="btn btn-accent">Se connecter</button></div>
         </form>`
-      : `<p class="sync-status" id="sync-status">${esc(syncLine(st))}</p>
-        <p class="muted small">Compte : ${esc(st.email)}</p>
-        <div class="export-btns">
-          <button type="button" class="btn btn-ghost" data-action="sync-now" data-autofocus>${icon('cloud', 18)} Synchroniser maintenant</button>
-          <button type="button" class="btn btn-quiet" data-action="sign-out">Se déconnecter</button>
+      : `<div class="sync-actions">
+          <button type="button" class="btn btn-ghost" data-action="sync-now"${m.focusSignOut ? '' : ' data-autofocus'}>${icon('cloud', 18)} Synchroniser maintenant</button>
+        </div>
+        <div class="sync-account">
+          <span>Compte du salon : <strong>${esc(st.email)}</strong></span>
+          <button type="button" class="btn btn-quiet btn-sm" data-action="sign-out"${m.focusSignOut ? ' data-autofocus' : ''}>Se déconnecter</button>
         </div>`;
     body = `
       <div class="dialog">
         <h2 class="serif" id="dlg-title">Sauvegarde</h2>
-        <section class="dlg-section" aria-labelledby="sec-online">
-          <h3 class="label" id="sec-online">En ligne</h3>
-          ${online}
-          <p class="muted small">Les clients qui n’ont pas encore donné leur accord restent sur la tablette.</p>
-        </section>
+        <div class="sync-state sync-${v.tone}" id="sync-state" role="status">${syncStateInner(v)}</div>
+        ${online}
         <section class="dlg-section" aria-labelledby="sec-export">
-          <h3 class="label" id="sec-export">Exporter</h3>
-          <p class="muted">Fichiers CSV qui s'ouvrent dans Excel. Ils arrivent dans le dossier « Téléchargements » de la tablette.</p>
+          <h3 id="sec-export">Exporter en CSV</h3>
+          <p class="muted small">Fiches clients et historique, à ouvrir dans Excel. Les fichiers arrivent dans « Téléchargements » ; les photos n’y sont pas.</p>
           <div class="export-btns">
-            <button type="button" class="btn btn-ghost btn-lg" data-action="export-clients">${icon('download', 18)} Fiches clients</button>
-            <button type="button" class="btn btn-ghost btn-lg" data-action="export-visits">${icon('download', 18)} Historique des visites</button>
+            <button type="button" class="btn btn-ghost" data-action="export-clients">${icon('download', 18)} Fiches clients</button>
+            <button type="button" class="btn btn-ghost" data-action="export-visits">${icon('download', 18)} Historique des visites</button>
           </div>
-          <p class="muted small">Les photos ne sont pas incluses dans l'export.</p>
         </section>
         <div class="form-actions"><button type="button" class="btn btn-ghost" data-action="close-modal">Fermer</button></div>
+      </div>`;
+  } else if (m.type === 'confirm-signout') {
+    const n = m.pending;
+    let pend = '';
+    if (n && m.online) pend = `<p class="muted">${n > 1 ? `Les ${n} modifications en attente sont envoyées` : 'La modification en attente est envoyée'} avant l’arrêt.</p>`;
+    else if (n) pend = `<p class="muted">Hors ligne : ${n > 1 ? `${n} modifications ne partiront pas` : 'une modification ne partira pas'} en ligne.</p>`;
+    body = `
+      <div class="dialog dialog-sm">
+        <h2 class="serif" id="dlg-title">Arrêter la sauvegarde sur cette tablette ?</h2>
+        <p class="muted">Les fiches restent sur la tablette, mais les prochaines modifications ne seront plus copiées en ligne.</p>
+        ${pend}
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" data-action="cancel-signout" data-autofocus>Annuler</button>
+          <button type="button" class="btn btn-danger-outline" data-action="confirm-signout">Arrêter la sauvegarde</button>
+        </div>
       </div>`;
   } else if (m.type === 'no-consent') {
     const lost =
@@ -859,7 +908,7 @@ async function loadHistory() {
 
 async function selectClient(id) {
   parkDraft();
-  dropNotices((n) => !n.visitId); // les simples informations ne suivent pas sur une fiche
+  dropNotices((n) => !n.visitId && !n.sync); // les simples informations ne suivent pas sur une fiche
   S.clientId = id;
   S.client = await db.getClient(id);
   await loadHistory();
@@ -1133,12 +1182,26 @@ const actions = {
     go('pin');
   },
   backup: () => openModal({ type: 'backup' }),
-  'sync-now': async () => {
-    await sync.syncNow();
-    announce(syncLine(sync.getStatus()));
+  'sync-now': () => {
+    if (navigator.onLine) sync.syncNow();
+    else toast('Pas de réseau pour l’instant : l’envoi partira tout seul au retour du réseau.');
   },
-  'sign-out': async () => {
+  // Pas d'openModal : on reste dans la fenêtre Sauvegarde, dont le retour de focus est déjà noté.
+  'sign-out': () => {
+    hideToast();
+    S.modal ={ type: 'confirm-signout', pending: sync.getStatus().pending, online: navigator.onLine };
+    render();
+  },
+  'cancel-signout': () => {
+    S.modal = { type: 'backup', focusSignOut: true };
+    render();
+  },
+  'confirm-signout': async (el) => {
+    el.disabled = true;
+    if (navigator.onLine) await sync.syncNow();
     await sync.signOut();
+    S.modal = { type: 'backup' };
+    render();
     toast('Sauvegarde en ligne arrêtée sur cette tablette');
   },
   'export-clients': exportClients,
@@ -1523,24 +1586,51 @@ window.addEventListener('popstate', () => {
 
 // ---------- Synchro ----------
 
-// La fenêtre Sauvegarde ouverte suit l'état ; une connexion expirée est signalée une fois au coiffeur.
-let authNoticed = false;
+// Une panne qui dure (3 échecs d'affilée, une dizaine de minutes) ou une connexion expirée est
+// signalée une fois par un bandeau, retiré dès qu'une sauvegarde repasse.
+const FAILS_BEFORE_NOTICE = 3;
+let syncNotice = null; // 'auth' | 'fail'
+
+function syncProblem(st) {
+  if (st.state === 'auth') return 'auth';
+  const failing = st.state === 'error' && st.failures >= FAILS_BEFORE_NOTICE;
+  const old = st.state === 'offline' && st.lastAt && Date.now() - new Date(st.lastAt) > DAY_MS;
+  return failing || old ? 'fail' : null;
+}
+
+// Le bouton de la barre du haut et la fenêtre Sauvegarde ouverte suivent l'état.
 sync.subscribe((st) => {
-  if (st.state === 'auth' && !authNoticed) {
-    authNoticed = true;
-    const notice = { text: 'La sauvegarde en ligne est interrompue : reconnectez-vous dans « Sauvegarde ».' };
-    if (S.view === 'coiffeur') {
-      addNotice(notice);
-      if (!S.modal) render();
-    } else S.notices.push(notice);
-  } else if (st.state !== 'auth') authNoticed = false;
+  const problem = syncProblem(st);
+  if (problem !== syncNotice && (problem || st.state === 'idle' || st.state === 'off')) {
+    syncNotice = problem;
+    dropNotices((n) => n.sync);
+    if (problem) {
+      const last = st.lastAt ? ` (dernière réussie ${whenSynced(st.lastAt)})` : '';
+      const notice =
+        problem === 'auth'
+          ? { sync: true, text: 'La sauvegarde en ligne est arrêtée : la connexion au compte a expiré.', action: 'backup', label: 'Se reconnecter' }
+          : { sync: true, text: `La sauvegarde en ligne ne passe plus${last}. Les fiches sont bien sur la tablette.`, action: 'backup', label: 'Voir la sauvegarde' };
+      if (S.view === 'coiffeur') addNotice(notice);
+      else S.notices.push(notice);
+    }
+    if (S.view === 'coiffeur' && !S.modal) render();
+  }
+  const btn = app.querySelector('#backup-btn');
+  if (btn) {
+    btn.className = backupClass(st);
+    btn.innerHTML = backupLabel(st);
+  }
   if (S.modal?.type !== 'backup') return;
   if (Boolean(app.querySelector('[data-form="login"]')) !== needsLogin(st)) {
     render();
     return;
   }
-  const line = app.querySelector('#sync-status');
-  if (line) line.textContent = syncLine(st);
+  const box = app.querySelector('#sync-state');
+  if (box) {
+    const v = syncView(st);
+    box.className = `sync-state sync-${v.tone}`;
+    box.innerHTML = syncStateInner(v);
+  }
 });
 
 // Données arrivées d'en ligne (restauration sur une autre tablette) : liste et fiche affichée remises à jour.

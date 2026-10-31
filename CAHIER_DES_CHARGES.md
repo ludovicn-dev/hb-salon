@@ -22,11 +22,12 @@ Maquettes : https://claude.ai/artifact/4HnJfspaKf4fw7f9TrdCSM
 - Photos : 1 à 3 par visite, côté coiffeur.
 - Consentement RGPD : proposé au client mais **pas obligatoire** pour valider. **Sans accord, rien n'est conservé** :
   après confirmation, la fiche du client, ses visites et ses photos sont effacées.
-- Code PIN oublié : prévoir un moyen de le récupérer (méthode à définir).
+- Code PIN oublié : code de déblocage à 8 chiffres, connu de la seule personne qui a installé l'appli ; il permet de choisir un nouveau PIN.
 - Historique : le coiffeur peut **modifier ou supprimer** une visite passée.
 
 ## Données
 - Hors-ligne d'abord : tout est enregistré sur la tablette puis synchronisé quand le réseau revient.
-- Stockage en ligne : Supabase (gratuit), compte au nom du coiffeur (responsable RGPD).
+- Stockage en ligne : Supabase (gratuit), compte au nom du coiffeur (responsable RGPD). Seules les fiches avec accord partent
+  en ligne ; une fiche effacée faute d'accord l'est aussi en ligne. Connexion au compte depuis la fenêtre « Sauvegarde ».
 - Export : bouton « Exporter » (Excel/CSV) dans l'espace coiffeur.
 - Pas d'import : on part de zéro.
