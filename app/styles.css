@@ -20,6 +20,9 @@
   --scrim-soft: color-mix(in srgb, var(--bg) 85%, transparent);
   --serif: 'Cormorant Garamond', Georgia, serif;
   --sans: Manrope, system-ui, sans-serif;
+  --t-press: 120ms; /* retour au toucher */
+  --t-dialog: 220ms; /* arrivée d'une fenêtre */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   color-scheme: dark;
 }
 
@@ -40,6 +43,11 @@ html, body {
 button, input, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: default; opacity: 0.5; }
+/* Retour au toucher : fond, bord ou couleur qui changent en douceur, sans bouger la mise en page. */
+button, .search, .field input, .field textarea {
+  transition: background-color var(--t-press), border-color var(--t-press), color var(--t-press), box-shadow var(--t-press);
+}
+button, label, input, textarea { touch-action: manipulation; }
 h1[tabindex='-1']:focus { outline: none; }
 input, textarea { caret-color: var(--accent); }
 input::placeholder, textarea::placeholder { color: var(--placeholder); font-style: italic; }
@@ -155,6 +163,7 @@ h2.label { font-weight: 400; }
   padding: 10px 0;
   min-height: 44px;
 }
+.link:active { color: var(--accent-hi); }
 
 /* ---------- Accueil / Merci ---------- */
 
@@ -261,6 +270,7 @@ h2.label { font-weight: 400; }
   border: 1px solid var(--line);
   background: var(--panel);
 }
+.result:active { background: var(--panel-2); border-color: var(--line-2); }
 .result.active { background: var(--panel-2); border: 1.5px solid var(--accent); }
 .result-name { font-size: 17px; font-weight: 600; }
 .result-sub { font-size: 14px; color: var(--muted); }
@@ -283,6 +293,7 @@ h2.label { font-weight: 400; }
   font-size: 16px;
   font-weight: 600;
 }
+.btn-new:active, .photo-add:active { background: var(--panel); border-color: var(--accent); }
 
 .detail {
   flex: 1;
@@ -349,6 +360,11 @@ h2.label { font-weight: 400; }
 .allergy div { display: flex; flex-direction: column; gap: 4px; }
 .allergy strong { font-size: 13px; letter-spacing: 1.2px; text-transform: uppercase; }
 .allergy span { color: var(--text); font-size: 17px; font-weight: 600; }
+/* Rappel compact dans la carte « Formule couleur ». */
+.allergy-mini { align-items: center; gap: 10px; padding: 8px 14px; border-radius: 10px; }
+.allergy-mini p { line-height: 1.4; }
+.allergy-mini strong { margin-right: 8px; }
+.allergy-mini span { font-size: 15px; }
 
 .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
 .tabs button {
@@ -363,6 +379,7 @@ h2.label { font-weight: 400; }
   margin-bottom: -1px;
 }
 .tabs button[aria-selected='true'] { color: var(--text); border-bottom-color: var(--accent); }
+.tabs button:active { color: var(--text); background: var(--panel); }
 
 .draft { display: flex; flex-direction: column; gap: 16px; }
 
@@ -383,6 +400,7 @@ h2.label { font-weight: 400; }
 .link-start { align-self: flex-start; padding: 0; }
 .service .ic { display: none; color: var(--accent); }
 /* Coché : contour et coche or rose, sans aplat, pour laisser le bouton principal seul en or plein. */
+.service:active { background: var(--panel-2); }
 .service[aria-pressed='true'] { background: var(--panel-2); border: 1.5px solid var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .service[aria-pressed='true'] .ic { display: block; }
 
@@ -442,7 +460,9 @@ h2.label { font-weight: 400; }
   align-items: center;
   justify-content: center;
 }
-.photo-del::before { content: ''; position: absolute; inset: 6px; border-radius: 50%; background: var(--scrim-soft); }
+button.photo:active { border-color: var(--accent); }
+.photo-del::before { content: ''; position: absolute; inset: 6px; border-radius: 50%; background: var(--scrim-soft); transition: background-color var(--t-press); }
+.photo-del:active::before { background: var(--panel-2); }
 .photo-del .ic { position: relative; }
 .photo-add {
   width: 120px;
@@ -472,6 +492,11 @@ h2.label { font-weight: 400; }
   padding: 16px 0 24px;
   background: linear-gradient(to bottom, transparent, var(--bg) 30%);
 }
+/* Clavier ouvert en paysage : l'écran ne fait plus que ~400 px, le bouton reprend sa place en fin de fiche. */
+@media (max-height: 520px) {
+  .draft-foot { position: static; background: none; }
+  .detail { scroll-padding-bottom: 16px; }
+}
 
 .history { list-style: none; margin: 0; padding: 0 0 24px; display: flex; flex-direction: column; gap: 12px; }
 .visit { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 18px; display: flex; flex-direction: column; gap: 8px; }
@@ -485,7 +510,7 @@ h2.label { font-weight: 400; }
 .badge { font-size: 13px; padding: 4px 10px; border-radius: 99px; border: 1px solid var(--line-2); color: var(--muted); }
 .badge-pending { display: inline-flex; align-items: center; gap: 6px; border-color: var(--accent); color: var(--accent); font-weight: 600; }
 .chips { display: flex; gap: 6px; flex-wrap: wrap; }
-.chip { font-size: 13px; padding: 4px 10px; border-radius: 99px; background: var(--panel-2); }
+.chip { font-size: 14px; padding: 4px 10px; border-radius: 99px; background: var(--panel-2); }
 
 /* ---------- Écran client ---------- */
 
@@ -534,6 +559,7 @@ h2.label { font-weight: 400; }
 }
 .consent input:checked + .box { background: var(--accent); color: var(--bg); }
 .consent input:focus-visible + .box { outline: 2px solid var(--accent); outline-offset: 3px; }
+.consent:active .box { border-color: var(--accent-hi); }
 .consent small { display: block; margin-top: 4px; font-size: 14px; color: var(--muted); }
 
 .form-actions { margin-top: auto; display: flex; justify-content: space-between; align-items: center; gap: 14px; }
@@ -596,6 +622,14 @@ h2.label { font-weight: 400; }
   justify-content: center;
   padding: 24px;
   z-index: 10;
+}
+/* Arrivée d'une fenêtre : voile en fondu, fenêtre qui monte à peine. La fermeture reste immédiate. */
+.overlay.enter { animation: scrim-in var(--t-dialog) ease-out; }
+.overlay.enter > .dialog, .overlay.enter > .lightbox { animation: dialog-in var(--t-dialog) var(--ease-out); }
+@keyframes scrim-in { from { opacity: 0; } }
+@keyframes dialog-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } }
+@media (prefers-reduced-motion: reduce) {
+  .overlay.enter > .dialog, .overlay.enter > .lightbox { animation-name: scrim-in; }
 }
 .dialog {
   width: min(640px, 100%);

@@ -66,9 +66,12 @@ const esc = (v) =>
 const norm = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 const digits = (s) => String(s ?? '').replace(/\D/g, '');
 
+// Numéros calédoniens (6 chiffres) à la façon locale, 98.62.13 ; numéros de métropole en 06 12 34 56 78.
 function fmtPhone(p) {
   const d = digits(p);
-  if ([6, 8, 10].includes(d.length)) return d.replace(/(\d\d)(?=\d)/g, '$1 ');
+  if (d.length === 6) return d.replace(/(\d\d)(?=\d)/g, '$1.');
+  if (d.length === 9 && d.startsWith('687')) return `+687 ${fmtPhone(d.slice(3))}`;
+  if ([8, 10].includes(d.length)) return d.replace(/(\d\d)(?=\d)/g, '$1 ');
   return p || '';
 }
 
@@ -308,6 +311,9 @@ function render({ top = false, focus = null } = {}) {
   const views = { welcome: viewWelcome, pin: viewPin, coiffeur: viewCoiffeur, client: viewClient, thanks: viewThanks };
   app.innerHTML = (views[S.view] || (() => ''))() + (S.modal ? viewModal() : '');
   app.dataset.view = S.view;
+  // Fondu d'arrivée seulement à l'ouverture d'une fenêtre, pas quand on la redessine (erreur, état de la sauvegarde…).
+  if (S.modal && S.modal.type !== app.dataset.modal) app.querySelector(':scope > .overlay')?.classList.add('enter');
+  app.dataset.modal = S.modal?.type || '';
 
   if (scrolls) {
     SCROLLERS.forEach((sel, i) => {
@@ -553,6 +559,12 @@ function viewDraft() {
         <h2 class="label">Formule couleur</h2>
         ${S.lastFormula && !d.editId ? `<button type="button" class="link" data-action="reuse-formula">${icon('undo', 16)} Reprendre la formule du ${fmtDayShort(S.lastFormula.date)}</button>` : ''}
       </div>
+      ${
+        // Rappel au plus près de la formule : l'encadré du haut sort de l'écran quand le clavier est ouvert.
+        S.client?.allergies
+          ? `<div class="allergy allergy-mini">${icon('alert', 18)}<p><strong>Allergies</strong> <span>${esc(S.client.allergies)}</span></p></div>`
+          : ''
+      }
       <div class="grid4">
         ${field('brand', 'Marque', 'ex. Majirel')}
         ${field('shade', 'Nuance', 'ex. 6.34 + 7.3')}
@@ -845,7 +857,7 @@ function viewModal() {
 }
 
 const viewLightbox = (src) => `
-  <div class="overlay" role="dialog" aria-modal="true" aria-label="Photo agrandie">
+  <div class="overlay enter" role="dialog" aria-modal="true" aria-label="Photo agrandie">
     <div class="lightbox" data-action="close-photo"><img src="${src}" alt="Photo agrandie"></div>
     <button type="button" class="btn btn-ghost lightbox-close" data-action="close-photo">${icon('x', 18)} Fermer</button>
   </div>`;
@@ -1211,7 +1223,7 @@ const actions = {
     render({ top: true });
   },
   'new-client': () => openModal({ type: 'client', client: { firstName: '', lastName: '', phone: '', email: '', allergies: '' } }),
-  'edit-client': () => openModal({ type: 'client', client: { ...S.client } }),
+  'edit-client': () => openModal({ type: 'client', client: { ...S.client, phone: fmtPhone(S.client.phone) } }),
   'close-modal': closeModal,
   tab: (el) => {
     S.tab = el.dataset.tab;
@@ -1390,6 +1402,14 @@ function bindCheckout(el) {
 // Toucher « Je continue » ne doit pas retirer le focus du champ en cours (le clavier Android resterait fermé).
 app.addEventListener('pointerdown', (e) => {
   if (e.target.closest('.idle-warn')) e.preventDefault();
+});
+
+// Téléphone mis en forme (98.62.13) en quittant le champ, comme partout ailleurs dans l'appli.
+app.addEventListener('focusout', (e) => {
+  const el = e.target;
+  if (el.type !== 'tel' || fmtPhone(el.value) === el.value) return;
+  el.value = fmtPhone(el.value);
+  bindCheckout(el);
 });
 
 app.addEventListener('input', (e) => {
