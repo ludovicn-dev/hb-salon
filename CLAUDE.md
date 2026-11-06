@@ -1,6 +1,7 @@
 # H&B Salon — appli fiche client
 
 Répondre en français. Le besoin et les règles métier sont dans [CAHIER_DES_CHARGES.md](CAHIER_DES_CHARGES.md) : s'y référer, ne pas les rediscuter.
+Salon en Nouvelle-Calédonie : téléphones à 6 chiffres, affichés `98.62.13` (`fmtPhone`, `+687` reconnu, métropole en `06 12 34 56 78`).
 
 ## Technique
 - PWA en JavaScript simple, sans framework ni étape de build : tout est dans [app/](app/).
@@ -9,6 +10,7 @@ Répondre en français. Le besoin et les règles métier sont dans [CAHIER_DES_C
     - Brouillons de visite par client dans `S.drafts` (mémoire seulement) ; `parkDraft()` avant de changer de client ou de passer la tablette.
     - Bandeaux du coiffeur : `addNotice()` / `dropNotices()` ; ceux liés à une visite (`visitId`) disparaissent quand elle est validée ou effacée.
     - Annonces lecteur d'écran : `announce()` (zone `#announce`) et `toast()` (zone `#toast`, hors de `#app`).
+    - Fenêtres : `S.modal`, redessinées avec l'écran ; le fondu d'arrivée ne joue que quand le type de fenêtre change (`app.dataset.modal`).
     - PIN oublié : code de déblocage à 8 chiffres connu du seul installateur. app.js étant public, seule son empreinte PBKDF2 y figure (`RECOVERY_SALT`, `RECOVERY_ITER`, `RECOVERY_HASH`) ; ne jamais revenir à un simple SHA-256.
   - `db.js` : stockage IndexedDB (clients, visites, photos avec miniature `thumb`, réglages dont `pinHash` et `pinLock`). Toute écriture locale pose `dirty: 1` ; les effacements vont dans le magasin `deletions`. Changer la structure = nouvelle `DB_VERSION` avec migration dans `onupgradeneeded`.
   - `sync.js` : sauvegarde Supabase en REST direct (pas de bibliothèque). Envoie `dirty` + effacements, puis récupère les nouveautés (`synced_at` posé par le serveur). Les clients sans `consentAt` ne partent jamais en ligne. Connexion dans la fenêtre « Sauvegarde ».
@@ -21,14 +23,17 @@ Répondre en français. Le besoin et les règles métier sont dans [CAHIER_DES_C
 ## Lancer et tester
 - `npx http-server -p 8080 -c-1` dans `app/`, puis http://localhost:8080.
 - Pas de tablette sous la main : tester avec Playwright en 1280×800 (paysage) et 800×1280 (portrait), dans un contexte isolé (`browser().newContext()`) pour ne pas mélanger les données IndexedDB ; `page.clock.install()` pour les minuteurs (2 min client, 10 min coiffeur).
+  - Playwright du MCP : fichiers lus ou écrits seulement dans le projet (captures dans `.playwright-mcp/`, ignoré par git) ; pas de `require` dans le code exécuté. Premier lancement : l'appli ouvre directement « Nouveau code », sans accueil.
+  - Clavier Android ouvert : simuler en réduisant la hauteur (~440 px en paysage) ; la page déclare `interactive-widget=resizes-content`.
 - Synchro : tester avec un compte Supabase de test créé pour l'occasion (puis vidé et supprimé), jamais avec celui du coiffeur ; deux contextes isolés = deux tablettes.
-- Révisions design : `/impeccable critique` ; rapports dans [.impeccable/critique/](.impeccable/critique/).
+- Révisions design : `/impeccable critique` (rapports dans [.impeccable/critique/](.impeccable/critique/)) ou `/ui-ux-pro-max`.
 
 ## Design « Élégance »
-Bleu nuit `#161D33`, or rose `#E3B59C`, Cormorant Garamond (titres) + Manrope (texte). Couleurs en variables CSS dans `styles.css`, aucune en dur.
+Bleu nuit `#161D33`, or rose `#E3B59C`, Cormorant Garamond (titres) + Manrope (texte). Couleurs et durées d'animation (`--t-press`, `--t-dialog`) en variables CSS dans `styles.css`, aucune en dur.
+- Retour au toucher sur tout élément tactile (`:active` + transition courte), sans changer la mise en page.
 - Un seul bouton or plein par écran (l'action principale).
 - Le bordeaux et le triangle d'alerte sont réservés à l'allergie ; erreurs et actions destructrices en corail `--error` ; « à valider » en or avec horloge ; informations neutres.
 - Bords des champs et boutons à 3:1 minimum (`--control-line`, `--control-line-2`, `--line-2`) ; zones tactiles de 44 px minimum.
 - Les accents de Cormorant qui paraissent décalés sont le dessin de la police, pas un bug.
 
-Maquettes : https://claude.ai/artifact/4HnJfspaKf4fw7f9TrdCSM
+Maquettes : https://claude.ai/artifact/4HnJfspaKf4fw7f9TrdCSM ; maquettes de travail (agenda, logo) dans `.superpowers/brainstorm/`, ignoré par git.
