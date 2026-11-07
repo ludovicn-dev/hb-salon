@@ -30,7 +30,7 @@ Maquettes : https://claude.ai/artifact/4HnJfspaKf4fw7f9TrdCSM
 - Historique : le coiffeur peut **modifier ou supprimer** une visite passée.
 - Rendez-vous : pas de chevauchement, fin à 18 h au plus tard. Un rendez-vous garde une copie du prénom et du téléphone.
   Sans accord RGPD, il reste sur la tablette ; si le client refuse l'accord, ses rendez-vous passés sont effacés
-  et ceux à venir restent sur la tablette seulement.
+  et ceux à venir restent sur la tablette seulement, puis en sont effacés une fois leur jour passé.
 
 ## Données
 - Hors-ligne d'abord : tout est enregistré sur la tablette puis synchronisé quand le réseau revient.

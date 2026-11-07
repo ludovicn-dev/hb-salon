@@ -322,6 +322,18 @@ export async function detachAppointments(clientId, nowIso) {
   return kept;
 }
 
+// RGPD : un rendez-vous gardé après un refus (localOnly) est effacé une fois son jour passé.
+// Il n'est plus en ligne : rien à y effacer.
+export async function purgeLocalOnly(beforeIso) {
+  const db = await open();
+  const tx = db.transaction('appointments', 'readwrite');
+  const appts = tx.objectStore('appointments');
+  for (const a of await promisify(appts.index('start').getAll(IDBKeyRange.upperBound(beforeIso, true)))) {
+    if (a.localOnly) appts.delete(a.id);
+  }
+  await done(tx);
+}
+
 // --- Synchro (utilisé par sync.js) ---
 
 // Enregistrements modifiés sur la tablette et pas encore envoyés.

@@ -2209,6 +2209,8 @@ async function onPulled() {
 
 (async function boot() {
   if (navigator.storage?.persist) navigator.storage.persist();
+  const today = new Date();
+  await db.purgeLocalOnly(new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString());
   sync.start(onPulled);
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');
   const pinLock = await db.getSetting('pinLock');
