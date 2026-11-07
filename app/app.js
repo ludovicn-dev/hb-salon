@@ -1,5 +1,6 @@
 import * as db from './db.js';
 import * as sync from './sync.js';
+import * as core from './agenda-core.js';
 
 const SERVICES = ['Coupe & coiffage', 'Coloration', 'Lissage', 'Soin', 'Barbe', 'Massage', 'Visagiste', 'Diagnostic'];
 const CLIENT_IDLE_MS = 2 * 60 * 1000;
@@ -47,7 +48,12 @@ const S = {
   photoCache: new Map(), // visitId -> photos (miniatures de l'historique)
   idleReturn: null, // élément à refocaliser après « Je continue »
   validated: '', // nom du dernier client qui a validé sa fiche
-  modal: null, // { type: 'client' | 'backup' | 'confirm-delete' | 'photo', ... }
+  space: 'fiches', // espace coiffeur : 'fiches' | 'agenda' (gardé au verrouillage)
+  week: null, // lundi de la semaine affichée dans l'agenda
+  weekAppts: [], // rendez-vous de cette semaine
+  moving: null, // { id, name } : rendez-vous à déplacer, en attente du nouveau créneau
+  todayAppts: [], // rendez-vous du jour (accueil de l'espace coiffeur)
+  modal: null, // { type: 'client' | 'backup' | 'confirm-delete' | 'photo' | 'appt' | ..., ... }
   modalReturn: null // élément à refocaliser à la fermeture
 };
 
@@ -201,6 +207,11 @@ const ICONS = {
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/>',
   cloud: '<path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 10.5 3.75 3.75 0 0 1 17.25 18z"/>',
+  calendar: '<rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',
+  card: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2.5"/><path d="M14 10h4M14 14h4M5.5 16.5c.8-1.4 2-2 3.5-2s2.7.6 3.5 2"/>',
+  left: '<path d="M15 5l-7 7 7 7"/>',
+  right: '<path d="M9 5l7 7-7 7"/>',
+  move: '<path d="M12 3v18M3 12h18M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/>',
   cloudOff: '<path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 10.5 3.75 3.75 0 0 1 17.25 18z"/><path d="M4 4l16 16"/>'
 };
 
@@ -294,7 +305,7 @@ function closeModal() {
 
 // ---------- Rendu ----------
 
-const SCROLLERS = ['.detail', '.results', '.coiffeur-body', '.client', '.client-form', '.dialog'];
+const SCROLLERS = ['.detail', '.results', '.coiffeur-body', '.client', '.client-form', '.dialog', '.agenda'];
 
 // Redessine l'écran en gardant la position de défilement et le focus (sauf changement d'écran).
 function render({ top = false, focus = null } = {}) {
@@ -383,7 +394,12 @@ function viewCoiffeur() {
   return `
   <div class="coiffeur">
     <header class="topbar">
-      <div class="brand">${logo('sm')}<span class="muted">Espace coiffeur</span></div>
+      <div class="brand">${logo('sm')}<span class="muted brand-label">Espace coiffeur</span>
+        <div class="space-switch" role="group" aria-label="Affichage">
+          <button type="button" class="space-btn" data-action="space" data-space="fiches" aria-pressed="${S.space === 'fiches'}">${icon('card', 18)} Fiches</button>
+          <button type="button" class="space-btn" data-action="space" data-space="agenda" aria-pressed="${S.space === 'agenda'}">${icon('calendar', 18)} Agenda</button>
+        </div>
+      </div>
       <div class="top-actions">
         <span class="muted today">${fmtToday()}</span>
         <button type="button" class="btn btn-quiet" data-action="change-pin">${icon('key', 18)} Changer le code</button>
@@ -391,7 +407,10 @@ function viewCoiffeur() {
         <button type="button" class="btn btn-ghost" data-action="lock">${icon('lock', 18)} Verrouiller</button>
       </div>
     </header>
-    <div class="coiffeur-body">
+    ${
+      S.space === 'agenda'
+        ? `<main class="agenda">${viewAgenda()}</main>`
+        : `<div class="coiffeur-body">
       <aside class="side">
         <label for="search" class="label">Client</label>
         <div class="search">
@@ -402,6 +421,118 @@ function viewCoiffeur() {
         <button type="button" class="btn-new" data-action="new-client">${icon('plus', 18)} Nouveau client</button>
       </aside>
       <main class="detail">${viewNotices()}${S.client ? viewClientDetail() : viewEmpty()}</main>
+    </div>`
+    }
+  </div>`;
+}
+
+// ---------- Agenda ----------
+
+const DAY_NAMES = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+const SHORT_SERVICE = { 'Coupe & coiffage': 'Coupe', Coloration: 'Couleur' };
+const OPEN_SPAN = core.CLOSE_MIN - core.OPEN_MIN;
+const pct = (min) => `${(((min - core.OPEN_MIN) / OPEN_SPAN) * 100).toFixed(3)}%`;
+const span = (min) => `${((min / OPEN_SPAN) * 100).toFixed(3)}%`;
+const addDays = (date, n) => new Date(date.getFullYear(), date.getMonth(), date.getDate() + n);
+const atMinutes = (day, min) => new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, min);
+const fmtMin = (min) => `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')}`;
+const hourLabel = (min) => (min % 60 ? fmtMin(min) : `${min / 60} h`);
+
+// Le nom actuel de la fiche (complété par le client entre-temps) ; la copie du rendez-vous sinon.
+const apptClient = (a) => (a.clientId ? S.clients.find((c) => c.id === a.clientId) : null);
+function apptName(a, full = false) {
+  const c = apptClient(a);
+  if (c) return full ? fullName(c) : c.firstName || fullName(c);
+  return a.firstName || 'Sans nom';
+}
+const apptAllergy = (a) => apptClient(a)?.allergies || '';
+const shortServices = (a) => a.services.map((s) => SHORT_SERVICE[s] || s).join(', ');
+
+async function loadWeek() {
+  if (!S.week) S.week = core.defaultWeek(new Date());
+  S.weekAppts = await db.appointmentsBetween(S.week.toISOString(), addDays(S.week, 7).toISOString());
+}
+
+// Créneaux libres d'une demi-heure ; celui dont le début est pris commence à la fin du rendez-vous.
+function freeSlots(day, appts, now) {
+  const out = [];
+  for (let m = core.OPEN_MIN; m < core.CLOSE_MIN; m += core.SLOT_MIN) {
+    let start = m;
+    for (const a of appts) {
+      const s = core.minutesOf(new Date(a.start));
+      if (s <= start && s + a.duration > start) start = s + a.duration;
+    }
+    if (start >= m + core.SLOT_MIN) continue;
+    out.push({ top: m, start, end: m + core.SLOT_MIN, past: atMinutes(day, start) < now });
+  }
+  return out;
+}
+
+function viewDayColumn(day, i, now) {
+  const isToday = day.toDateString() === now.toDateString();
+  const appts = S.weekAppts.filter((a) => new Date(a.start).toDateString() === day.toDateString());
+  const lanes = core.lanes(appts);
+  const dayName = `${DAY_NAMES[i]} ${fmtDay(day)}`;
+  const lines = [];
+  for (let m = core.OPEN_MIN + 30; m < core.CLOSE_MIN; m += 30) lines.push(`<i class="hl${m % 60 ? ' half' : ''}" style="top:${pct(m)}"></i>`);
+  const slots = freeSlots(day, appts, now)
+    .map(
+      (f) =>
+        `<button type="button" class="slot" style="top:${pct(f.top)};height:${span(f.end - f.top)}" data-action="slot" data-day="${i}" data-min="${f.start}"${f.past ? ' disabled' : ''} aria-label="${esc(`${dayName}, ${fmtMin(f.start)}, libre`)}"></button>`
+    )
+    .join('');
+  const blocks = appts
+    .map((a) => {
+      const end = core.endOf(a);
+      const { lane, lanes: n } = lanes.get(a.id);
+      const allergy = apptAllergy(a);
+      const label = [`${apptName(a, true)}, ${dayName}, ${fmtTime(a.start)} à ${fmtTime(end.toISOString())}`, a.services.join(', '), allergy ? 'allergie' : '']
+        .filter(Boolean)
+        .join(', ');
+      return `<button type="button" class="appt-block${end <= now ? ' past' : ''}${S.moving?.id === a.id ? ' moving' : ''}"
+        style="top:${pct(core.minutesOf(new Date(a.start)))};height:${span(a.duration)};left:calc(${(lane / n) * 100}% + 2px);width:calc(${100 / n}% - 4px)"
+        data-action="appt" data-id="${a.id}" aria-label="${esc(label)}">
+        <span class="appt-name">${allergy ? icon('alert', 14) : ''}${esc(apptName(a))}</span>
+        ${a.duration >= 45 && a.services.length ? `<span class="appt-sub">${esc(shortServices(a))}</span>` : ''}
+      </button>`;
+    })
+    .join('');
+  const nowMin = core.minutesOf(now);
+  const nowLine = isToday && nowMin > core.OPEN_MIN && nowMin < core.CLOSE_MIN ? `<i class="now-line" style="top:${pct(nowMin)}"></i>` : '';
+  return `<div class="day-col${isToday ? ' is-today' : ''}">${lines.join('')}${slots}${blocks}${nowLine}</div>`;
+}
+
+function viewAgenda() {
+  const now = new Date();
+  const days = core.weekDays(S.week);
+  const current = S.week.getTime() === core.defaultWeek(now).getTime();
+  const hours = [];
+  for (let m = core.OPEN_MIN; m < core.CLOSE_MIN; m += 30) {
+    if (m === core.OPEN_MIN || m % 60 === 0) hours.push(`<span class="hour${m === core.OPEN_MIN ? ' first' : ''}" style="top:${pct(m)}">${hourLabel(m)}</span>`);
+  }
+  return `
+  <div class="agenda-head">
+    <h1 class="serif">${core.weekLabel(S.week)}</h1>
+    <div class="week-nav">
+      <button type="button" class="btn btn-ghost btn-icon" data-action="week-prev" aria-label="Semaine précédente">${icon('left', 20)}</button>
+      <button type="button" class="btn btn-ghost" data-action="week-now"${current ? ' disabled' : ''}>Cette semaine</button>
+      <button type="button" class="btn btn-ghost btn-icon" data-action="week-next" aria-label="Semaine suivante">${icon('right', 20)}</button>
+    </div>
+  </div>
+  ${
+    S.moving
+      ? `<div class="notice move-notice">${icon('move', 20)}<span>Touchez le nouveau créneau de <strong>${esc(S.moving.name)}</strong>.</span>
+          <button type="button" class="btn btn-sm btn-ghost" data-action="move-cancel">Annuler</button></div>`
+      : ''
+  }
+  <div class="week">
+    <div class="week-row week-days" aria-hidden="true">
+      <span></span>
+      ${days.map((d, i) => `<span class="day-head${d.toDateString() === now.toDateString() ? ' is-today' : ''}">${DAY_NAMES[i].slice(0, 3)} <strong>${d.getDate()}</strong></span>`).join('')}
+    </div>
+    <div class="week-row week-body">
+      <div class="hours" aria-hidden="true">${hours.join('')}</div>
+      ${days.map((d, i) => viewDayColumn(d, i, now)).join('')}
     </div>
   </div>`;
 }
@@ -932,6 +1063,12 @@ async function selectClient(id) {
   S.draftError = '';
 }
 
+async function showWeek(monday, focus = null) {
+  S.week = monday;
+  await loadWeek();
+  render({ focus });
+}
+
 async function enterCoiffeur() {
   // Tablette reprise (ou fermée pour inactivité) avant que le client ait validé.
   if (S.handedVisit) {
@@ -948,6 +1085,7 @@ async function enterCoiffeur() {
   }
   S.autoLocked = false;
   await loadClients();
+  if (S.space === 'agenda') await loadWeek();
   if (S.clientId) await selectClient(S.clientId);
   go('coiffeur');
   if (S.validated) {
@@ -1216,6 +1354,14 @@ const actions = {
     render();
     toast('Sauvegarde en ligne arrêtée sur cette tablette');
   },
+  space: async (el) => {
+    S.space = el.dataset.space;
+    if (S.space === 'agenda') await loadWeek();
+    render({ focus: `[data-space="${S.space}"]` });
+  },
+  'week-prev': () => showWeek(addDays(S.week, -7)),
+  'week-next': () => showWeek(addDays(S.week, 7)),
+  'week-now': () => showWeek(core.defaultWeek(new Date()), '[data-action="week-next"]'),
   'export-clients': exportClients,
   'export-visits': exportVisits,
   select: async (el) => {
@@ -1662,6 +1808,7 @@ async function onPulled() {
     if (S.client) await loadHistory();
     else S.clientId = null;
   }
+  if (S.space === 'agenda') await loadWeek();
   if (S.view === 'coiffeur' && !S.modal) render();
 }
 
