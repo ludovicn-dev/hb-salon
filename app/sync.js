@@ -146,6 +146,17 @@ const toRow = {
     validated_at: v.validatedAt || null,
     created_at: v.createdAt,
     updated_at: v.updatedAt
+  }),
+  appointments: (a) => ({
+    id: a.id,
+    client_id: a.clientId,
+    first_name: a.firstName,
+    phone: a.phone,
+    start_at: a.start,
+    duration_min: a.duration,
+    services: a.services,
+    created_at: a.createdAt,
+    updated_at: a.updatedAt
   })
 };
 
@@ -174,10 +185,23 @@ const fromRow = {
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     syncedAt: r.synced_at
+  }),
+  appointments: (r) => ({
+    id: r.id,
+    clientId: r.client_id,
+    firstName: r.first_name,
+    phone: r.phone,
+    start: new Date(r.start_at).toISOString(),
+    duration: r.duration_min,
+    services: r.services,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+    syncedAt: r.synced_at
   })
 };
 
-// Seules les fiches avec accord RGPD partent en ligne, avec leurs visites et photos.
+// Seules les fiches avec accord RGPD partent en ligne, avec leurs visites, photos et rendez-vous.
+// Un rendez-vous gardé après un refus (localOnly) ne part jamais.
 async function consentedIds() {
   const clients = await db.allClients();
   return new Set(clients.filter((c) => c.consentAt).map((c) => c.id));
@@ -187,7 +211,8 @@ async function eligible() {
   const ok = await consentedIds();
   const visits = await db.allVisits();
   const visitOk = new Set(visits.filter((v) => ok.has(v.clientId)).map((v) => v.id));
-  return { ok, visitOk };
+  const apptOk = (a) => !a.localOnly && ok.has(a.clientId);
+  return { ok, visitOk, apptOk };
 }
 
 // ---------- Envoi ----------
@@ -214,7 +239,7 @@ async function upload(path, blob) {
 }
 
 async function push() {
-  const { ok, visitOk } = await eligible();
+  const { ok, visitOk, apptOk } = await eligible();
 
   // Effacements d'abord : une fiche sans accord doit disparaître d'en ligne au plus vite.
   const dels = await db.pendingDeletions();
@@ -231,7 +256,7 @@ async function push() {
         body: { prefixes: photos.flatMap((d) => [photoPath(d.id), photoPath(d.id, true)]) }
       });
     }
-    for (const kind of ['photo', 'visit', 'client']) {
+    for (const kind of ['appointment', 'photo', 'visit', 'client']) {
       const ids = dels.filter((d) => d.kind === kind).map((d) => d.id);
       for (let i = 0; i < ids.length; i += 100) {
         await rest(`${kind}s`, `?id=in.(${ids.slice(i, i + 100).join(',')})`, { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
@@ -254,6 +279,8 @@ async function push() {
     });
     await db.markSynced('photos', p.id, p.createdAt, row.synced_at);
   }
+
+  await pushRecords('appointments', (await db.dirty('appointments')).filter(apptOk));
 }
 
 // ---------- Réception ----------
@@ -274,8 +301,10 @@ async function pullTable(table, apply) {
 }
 
 // Le plus récent gagne ; une modification locale pas encore envoyée n'est pas écrasée par une plus ancienne.
+const getters = { clients: db.getClient, visits: db.getVisit, appointments: db.getAppointment };
 const applyRecord = (table) => async (r) => {
-  const local = await (table === 'clients' ? db.getClient(r.id) : db.getVisit(r.id));
+  const local = await getters[table](r.id);
+  if (local?.localOnly) return false;
   if (local?.dirty && local.updatedAt > r.updated_at) return false;
   if (local && !local.dirty && local.syncedAt === r.synced_at) return false;
   await db.putRemote(table, fromRow[table](r));
@@ -305,35 +334,40 @@ async function applyDeletion(r) {
   const [get, del] = {
     client: [db.getClient, db.deleteClient],
     visit: [db.getVisit, db.deleteVisit],
-    photo: [db.getPhoto, db.deletePhoto]
+    photo: [db.getPhoto, db.deletePhoto],
+    appointment: [db.getAppointment, db.deleteAppointment]
   }[r.kind];
-  if (!(await get(r.id))) return false;
+  const local = await get(r.id);
+  // Rendez-vous gardé sur cette tablette après un refus RGPD : son effacement en ligne ne le concerne pas.
+  if (!local || local.localOnly) return false;
   await del(r.id, false);
   return true;
 }
 
-// Dans l'ordre : effacements, puis fiches avant leurs visites et leurs photos.
+// Dans l'ordre : effacements, puis fiches avant leurs visites, leurs photos et leurs rendez-vous.
 async function pull() {
   let changed = false;
   changed = (await pullTable('deletions', applyDeletion)) || changed;
   changed = (await pullTable('clients', applyRecord('clients'))) || changed;
   changed = (await pullTable('visits', applyRecord('visits'))) || changed;
   changed = (await pullTable('photos', applyPhoto)) || changed;
+  changed = (await pullTable('appointments', applyRecord('appointments'))) || changed;
   return changed;
 }
 
 // ---------- Cycle ----------
 
 async function countPending() {
-  const { ok, visitOk } = await eligible();
-  const [clients, visits, photos, dels] = await Promise.all([
+  const { ok, visitOk, apptOk } = await eligible();
+  const [clients, visits, photos, appts, dels] = await Promise.all([
     db.dirty('clients'),
     db.dirty('visits'),
     db.dirty('photos'),
+    db.dirty('appointments'),
     db.pendingDeletions()
   ]);
   const count = (list, okSet, key = 'id') => list.filter((r) => okSet.has(r[key])).length;
-  return count(clients, ok) + count(visits, visitOk) + count(photos, visitOk, 'visitId') + dels.length;
+  return count(clients, ok) + count(visits, visitOk) + count(photos, visitOk, 'visitId') + appts.filter(apptOk).length + dels.length;
 }
 
 async function run() {
