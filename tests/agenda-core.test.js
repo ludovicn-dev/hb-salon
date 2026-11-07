@@ -31,7 +31,7 @@ test('constantes des horaires et durées standard', () => {
   assert.equal(OPEN_MIN, 510);
   assert.equal(CLOSE_MIN, 1080);
   assert.deepEqual(STANDARD_DURATION, {
-    'Coupe & coiffage': 45,
+    'Coupe & coiffage': 30,
     Coloration: 120,
     Lissage: 150,
     Soin: 30,
@@ -83,7 +83,7 @@ test('endOf ajoute la durée', () => {
 
 test('standardDuration additionne, 30 min sans prestation', () => {
   assert.equal(standardDuration([]), 30);
-  assert.equal(standardDuration(['Coupe & coiffage', 'Coloration']), 165);
+  assert.equal(standardDuration(['Coupe & coiffage', 'Coloration']), 150);
   assert.equal(standardDuration(['Diagnostic']), 15);
 });
 

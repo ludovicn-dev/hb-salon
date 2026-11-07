@@ -237,8 +237,9 @@ h2.label { font-weight: 400; }
 }
 .brand, .top-actions { display: flex; align-items: center; gap: 14px; }
 .top-actions { gap: 10px; flex-wrap: wrap; }
-.today { display: flex; align-items: baseline; gap: 10px; margin-right: 8px; color: var(--muted); }
-.clock { color: var(--text); font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* Date et heure au centre, entre l'agenda et la sauvegarde, à la taille des boutons Fiches / Agenda. */
+.today { flex: 1; display: flex; justify-content: center; align-items: baseline; gap: 12px; min-width: 0; font-size: 18px; font-weight: 600; color: var(--text-2); white-space: nowrap; }
+.clock { color: var(--text); font-weight: 700; font-variant-numeric: tabular-nums; }
 
 .coiffeur-body { flex: 1; display: flex; min-height: 0; }
 
@@ -681,7 +682,6 @@ button.photo:active { border-color: var(--accent); }
 /* ---------- Tablette en portrait / petits écrans ---------- */
 
 @media (max-width: 1000px) {
-  .today-date { display: none; }
   .side { width: 280px; padding-left: 20px; }
   .detail { padding: 20px 20px 0; }
   .services, .grid4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -698,6 +698,7 @@ button.photo:active { border-color: var(--accent); }
 }
 
 @media (max-width: 700px) {
+  .today-date { display: none; }
   .coiffeur-body { flex-direction: column; overflow-y: auto; }
   .side { width: auto; border-right: none; border-bottom: 1px solid var(--line); padding: 16px; }
   .results { max-height: 260px; }

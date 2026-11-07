@@ -415,8 +415,8 @@ function viewCoiffeur() {
           <button type="button" class="space-btn" data-action="space" data-space="agenda" aria-pressed="${S.space === 'agenda'}">${icon('calendar', 22)} Agenda</button>
         </div>
       </div>
+      <p class="today"><span class="today-date">${fmtToday()}</span><span class="clock" id="clock">${fmtClock()}</span></p>
       <div class="top-actions">
-        <span class="today"><span class="today-date">${fmtToday()}</span><span class="clock" id="clock">${fmtClock()}</span></span>
         <button type="button" class="${backupClass()}" data-action="backup" id="backup-btn">${backupLabel()}</button>
         <button type="button" class="btn btn-ghost btn-icon" data-action="settings" aria-label="Réglages" title="Réglages">${icon('gear', 22)}</button>
         <button type="button" class="btn btn-ghost" data-action="lock">${icon('lock', 18)} Verrouiller</button>

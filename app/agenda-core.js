@@ -8,7 +8,7 @@ export const SLOT_MIN = 30;
 
 // Point de départ de la durée proposée ; le coiffeur l'ajuste à chaque rendez-vous.
 export const STANDARD_DURATION = {
-  'Coupe & coiffage': 45,
+  'Coupe & coiffage': 30,
   Coloration: 120,
   Lissage: 150,
   Soin: 30,

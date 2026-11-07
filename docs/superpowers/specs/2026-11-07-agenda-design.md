@@ -132,7 +132,9 @@ Maquette : `rdv-et-accueil.html`.
 
   | Coupe & coiffage | Coloration | Lissage | Soin | Barbe | Massage | Visagiste | Diagnostic |
   |---|---|---|---|---|---|---|---|
-  | 45 min | 2 h | 2 h 30 | 30 min | 30 min | 30 min | 30 min | 15 min |
+  | 30 min | 2 h | 2 h 30 | 30 min | 30 min | 30 min | 30 min | 15 min |
+
+  Coupe & coiffage ramenée de 45 à 30 min le 2026-11-07, à la demande de l'utilisateur.
 
 - **Enregistrer** (seul bouton or) et Annuler. Enregistrer est refusé, avec la raison sous le bouton et
   annoncée au lecteur d'écran, si :
