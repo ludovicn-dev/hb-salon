@@ -800,12 +800,39 @@ function viewResults() {
   );
 }
 
+// À l'ouverture : les rendez-vous du jour (terminés grisés, le prochain entouré d'or).
 function viewEmpty() {
-  return `
+  const now = new Date();
+  const list = [...S.todayAppts].sort((a, b) => a.start.localeCompare(b.start));
+  if (!list.length) {
+    return `
   <div class="empty">
-    <h1 class="serif">Prochain client</h1>
-    <p class="muted">Recherchez sa fiche à gauche, ou créez-en une nouvelle.</p>
+    <h1 class="serif">Aucun rendez-vous aujourd’hui</h1>
+    <p class="muted">Recherchez la fiche du prochain client à gauche, ou créez-en une nouvelle.</p>
     <button type="button" class="btn btn-accent" data-action="new-client">${icon('plus', 18)} Nouveau client</button>
+    <button type="button" class="link" data-action="space" data-space="agenda">${icon('calendar', 16)} Ouvrir l’agenda</button>
+  </div>`;
+  }
+  const next = core.nextOfDay(list, now);
+  const n = list.length;
+  return `
+  <div class="today-list">
+    <h1 class="serif">Aujourd’hui</h1>
+    <p class="muted">${fmtDayTitle(now.toISOString())} · ${n} rendez-vous</p>
+    <div class="today-rows">
+      ${list
+        .map((a) => {
+          const done = core.endOf(a) <= now;
+          const info = [a.services.join(', '), core.fmtDuration(a.duration)].filter(Boolean).join(' · ');
+          return `<button type="button" class="today-row${done ? ' past' : ''}${a.id === next ? ' next' : ''}" data-action="today-appt" data-id="${a.id}">
+            <span class="today-time">${fmtTime(a.start)}</span>
+            <span class="today-who"><strong>${esc(apptName(a, true))}</strong><span>${esc(info)}</span></span>
+            ${apptAllergy(a) ? `<span class="today-allergy">${icon('alert', 16)} Allergie</span>` : ''}
+            ${a.id === next ? '<span class="sr-only">, prochain rendez-vous</span>' : ''}
+          </button>`;
+        })
+        .join('')}
+    </div>
   </div>`;
 }
 
@@ -837,6 +864,11 @@ const whenOf = (v) => (isToday(v.date) ? `de ${fmtTime(v.date)}` : `du ${fmtDayS
 
 const consentLine = (c) => (c.consentAt ? `Accord RGPD donné le ${fmtDayShort(c.consentAt)}` : '');
 
+function lastColorLine() {
+  const lc = core.lastColor(S.history, new Date());
+  return lc ? `<p class="last-color">Dernière couleur ${core.agoText(lc.days)} (${fmtDayShort(lc.date)})</p>` : '';
+}
+
 function viewClientDetail() {
   const c = S.client;
   const contact = [fmtPhone(c.phone), c.email].filter(Boolean).join(' · ') || 'Coordonnées à compléter par le client';
@@ -846,6 +878,7 @@ function viewClientDetail() {
     <div>
       <h1 class="serif">${esc(fullName(c))}</h1>
       <p class="muted">${esc(contact)}</p>
+      ${lastColorLine()}
       ${consent ? `<p class="consent-line">${consent}</p>` : ''}
     </div>
     <button type="button" class="btn btn-ghost" data-action="edit-client">${icon('edit', 18)} Modifier la fiche</button>
@@ -1664,6 +1697,7 @@ const actions = {
     render();
   },
   'appt-open': () => openApptClient(findAppt(S.modal.id)),
+  'today-appt': (el) => openApptClient(findAppt(el.dataset.id)),
   'appt-cancel': () => {
     const a = findAppt(S.modal.id);
     openModal({ type: 'confirm-appt-cancel', id: a.id, name: apptName(a, true), start: a.start });
