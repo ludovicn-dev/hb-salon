@@ -22,6 +22,7 @@
   --sans: Manrope, system-ui, sans-serif;
   --t-press: 120ms; /* retour au toucher */
   --t-dialog: 220ms; /* arrivée d'une fenêtre */
+  --t-flash: 1800ms; /* rendez-vous qui vient d'être noté ou déplacé */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   color-scheme: dark;
 }
@@ -214,7 +215,8 @@ h2.label { font-weight: 400; }
 }
 .brand, .top-actions { display: flex; align-items: center; gap: 14px; }
 .top-actions { gap: 10px; flex-wrap: wrap; }
-.today { margin-right: 8px; }
+.today { display: flex; align-items: baseline; gap: 10px; margin-right: 8px; color: var(--muted); }
+.clock { color: var(--text); font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
 
 .coiffeur-body { flex: 1; display: flex; min-height: 0; }
 
@@ -631,6 +633,7 @@ button.photo:active { border-color: var(--accent); }
 .export-btns { display: flex; gap: 12px; flex-wrap: wrap; }
 .dlg-section { display: flex; flex-direction: column; gap: 12px; padding-top: 16px; border-top: 1px solid var(--line); }
 .dlg-section h3 { margin: 0; font-size: 16px; font-weight: 600; color: var(--text); }
+.dlg-section-first { padding-top: 0; border-top: none; }
 .backup-login { display: flex; flex-direction: column; gap: 12px; }
 
 /* État de la sauvegarde : neutre si tout va bien, or + horloge en attente, corail en panne. */
@@ -654,7 +657,7 @@ button.photo:active { border-color: var(--accent); }
 /* ---------- Tablette en portrait / petits écrans ---------- */
 
 @media (max-width: 1000px) {
-  .today { display: none; }
+  .today-date { display: none; }
   .side { width: 280px; padding-left: 20px; }
   .detail { padding: 20px 20px 0; }
   .services, .grid4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -683,31 +686,36 @@ button.photo:active { border-color: var(--accent); }
 
 /* ---------- Agenda ---------- */
 
-.space-switch { display: flex; gap: 4px; margin-left: 8px; }
+/* Fiches / Agenda : les deux grandes portes de l'espace coiffeur, plus visibles que les réglages à droite. */
+.space-switch { display: flex; gap: 4px; margin-left: 8px; padding: 4px; border: 1px solid var(--line-2); border-radius: 16px; }
 .space-btn {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-height: 44px;
-  padding: 8px 14px;
+  gap: 10px;
+  min-height: 52px;
+  padding: 8px 22px;
   border: none;
-  border-bottom: 2px solid transparent;
-  border-radius: 10px 10px 0 0;
+  border-radius: 12px;
   background: transparent;
-  color: var(--muted);
-  font-size: 15px;
+  color: var(--text-2);
+  font-size: 18px;
   font-weight: 600;
 }
 .space-btn:active { background: var(--panel); }
-.space-btn[aria-pressed='true'] { color: var(--accent); border-bottom-color: var(--accent); }
+.space-btn[aria-pressed='true'] { background: var(--panel-2); color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent); }
 
 .agenda { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; padding: 16px 24px 20px; overflow-y: auto; }
 .agenda-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-.agenda-head h1 { font-size: 32px; }
-.agenda-head p { margin-top: 2px; font-size: 14px; }
+.agenda-title { min-width: 0; }
+.agenda-head h1 { font-size: 32px; font-variant-numeric: lining-nums; }
+/* Consigne, déplacement en cours ou dernier message : toujours sur une ligne de même hauteur, la grille ne bouge pas. */
+.agenda-line { display: flex; align-items: center; gap: 6px; min-height: 20px; margin-top: 2px; font-size: 14px; }
+.agenda-line.is-move { color: var(--accent); }
+.agenda-line.is-error { color: var(--error); font-weight: 600; }
+.agenda-line.is-note { color: var(--text-2); }
+.agenda-line.is-note .ic { color: var(--accent); }
 .week-nav { display: flex; gap: 8px; }
 .btn-icon { width: 48px; padding: 0; }
-.move-notice { margin: 0; }
 
 .week { flex: 1; min-height: 480px; display: flex; flex-direction: column; gap: 6px; }
 .week-row { display: grid; grid-template-columns: 48px repeat(6, minmax(0, 1fr)); column-gap: 6px; }
@@ -718,15 +726,18 @@ button.photo:active { border-color: var(--accent); }
 .hours { position: relative; }
 .hour { position: absolute; right: 6px; transform: translateY(-50%); font-size: 12px; color: var(--muted); white-space: nowrap; }
 .hour.first { transform: none; }
+.hour.last { transform: translateY(-100%); }
 
-.day-col { position: relative; background: color-mix(in srgb, var(--bg) 50%, var(--panel)); border-radius: 6px; }
-.day-col.is-today { background: var(--panel); }
+/* Le temps à venir est clair (on peut y noter un rendez-vous), le temps écoulé reste au fond de la page. */
+.day-col { position: relative; background: var(--panel); border-radius: 6px; }
+.day-col.is-today { background: color-mix(in srgb, var(--panel) 55%, var(--panel-2)); }
+.past-veil { position: absolute; top: 0; left: 0; right: 0; background: var(--bg); border-radius: 6px 6px 0 0; pointer-events: none; }
 .hl { position: absolute; left: 0; right: 0; border-top: 1px solid var(--line); pointer-events: none; }
 .hl.half { border-top-style: dashed; opacity: 0.6; }
 .slot { position: absolute; left: 0; width: 100%; border: none; background: transparent; border-radius: 4px; }
 .slot:active { background: var(--panel-2); box-shadow: inset 0 0 0 1.5px var(--accent); }
-.slot:disabled { opacity: 1; background: color-mix(in srgb, var(--bg) 70%, transparent); }
-.now-line { position: absolute; left: -3px; right: 0; border-top: 2px solid var(--accent); pointer-events: none; z-index: 2; }
+/* Sous les rendez-vous : il ne barre plus les prénoms. */
+.now-line { position: absolute; left: -3px; right: 0; border-top: 2px solid var(--accent); pointer-events: none; }
 .now-line::before { content: ''; position: absolute; left: 0; top: -5px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
 
 .appt-block {
@@ -749,8 +760,19 @@ button.photo:active { border-color: var(--accent); }
 .appt-block:active { background: color-mix(in srgb, var(--panel-2) 70%, var(--accent)); }
 .appt-block.past { background: var(--panel); border-left-color: var(--line-2); color: var(--muted); }
 .appt-block.past .appt-sub { color: var(--muted); }
+.appt-block.live { box-shadow: inset 0 0 0 1.5px var(--accent); }
 .appt-block.moving { outline: 2px dashed var(--accent); outline-offset: 1px; }
-.appt-name { display: flex; align-items: center; gap: 4px; max-width: 100%; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Un quart d'heure : le prénom seul, centré, sans être rogné. */
+.appt-block.short { justify-content: center; padding-block: 0; }
+.appt-block.short .appt-name { font-size: 12px; line-height: 1.1; }
+/* Rendez-vous qui vient d'être noté, déplacé ou rétabli : un liseré or qui s'éteint. */
+.appt-block.flash { animation: flash var(--t-flash) var(--ease-out); }
+@keyframes flash {
+  from { outline: 3px solid var(--accent); outline-offset: 2px; }
+  to { outline: 3px solid transparent; outline-offset: 2px; }
+}
+.appt-name { display: flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0; font-weight: 700; }
+.appt-n { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .appt-name .ic { color: var(--error); }
 .appt-sub { max-width: 100%; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
@@ -765,12 +787,18 @@ button.photo:active { border-color: var(--accent); }
 .appt-dialog { width: min(720px, 100%); gap: 14px; }
 .appt-when { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .appt-day { font-size: 18px; font-weight: 600; }
+.appt-time-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.appt-done-time { min-width: 0; }
+/* Fin et place libre, sous l'heure ; en corail dès que ça ne tient plus (sans triangle : il est à l'allergie). */
+.appt-span { margin-top: -6px; font-size: 15px; color: var(--text-2); text-align: right; }
+.appt-span.over { color: var(--error); font-weight: 600; }
 .stepper { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .stepper .label { min-width: 70px; }
 .step-value { min-width: 84px; text-align: center; font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .appt-query { display: flex; align-items: flex-end; gap: 10px; }
 .appt-query .field { flex: 1; }
 .appt-query .btn { margin-bottom: 4px; white-space: nowrap; }
+.keyboard-btn { min-width: 150px; } /* même largeur pour « Clavier lettres » et « Clavier chiffres » : le champ ne bouge pas */
 .appt-who { display: flex; flex-direction: column; gap: 10px; }
 .appt-who:empty { display: none; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -792,12 +820,12 @@ button.photo:active { border-color: var(--accent); }
 .chip:active { background: var(--panel-2); }
 .chip[aria-pressed='true'] { background: var(--panel-2); border: 1.5px solid var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .chip-add { flex-direction: row; align-items: center; gap: 6px; border-style: dashed; color: var(--accent); }
-.appt-person { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; font-size: 19px; }
+.appt-person { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 19px; }
+.appt-person .appt-open { margin-left: auto; }
 .services-compact { gap: 8px; }
 .services-compact .service { min-height: 48px; padding: 8px; font-size: 14px; border-radius: 12px; }
 .appt-actions { flex-wrap: wrap; justify-content: space-between; }
-.appt-more, .appt-main { display: flex; gap: 8px; flex-wrap: wrap; }
-.appt-main { margin-left: auto; }
+.appt-main { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
 @media (max-width: 700px) {
   .services-compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -826,4 +854,8 @@ button.photo:active { border-color: var(--accent); }
 .today-who strong { font-size: 17px; }
 .today-who span { color: var(--muted); font-size: 14px; }
 .today-allergy { display: inline-flex; align-items: center; gap: 6px; color: var(--error); font-weight: 700; font-size: 14px; }
+.today-live { display: inline-flex; align-items: center; gap: 6px; color: var(--accent); font-weight: 700; font-size: 14px; }
 .last-color { margin-top: 4px; color: var(--text-2); font-size: 15px; }
+.next-appt { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; color: var(--text-2); font-size: 15px; }
+.next-appt .ic { color: var(--accent); }
+.next-appt .link { margin-left: 4px; }

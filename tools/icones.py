@@ -1,6 +1,6 @@
 """Icônes de l'appli à partir du vrai logo détouré.
 
-Usage : python -I tools/icones.py app/logo.webp app/icons
+Usage : python -I tools/icones.py <logo.png> app/icons   (PNG du logo, fond transparent ; voir tools/logo-vectoriel.py)
 Fond bleu nuit ; logo à 86 % de la largeur (icônes ordinaires) ou 68 % (maskable : l'ovale
 tient dans le cercle de 80 % que le téléphone peut garder en découpant l'icône).
 """

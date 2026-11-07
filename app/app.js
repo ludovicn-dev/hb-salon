@@ -51,7 +51,10 @@ const S = {
   space: 'fiches', // espace coiffeur : 'fiches' | 'agenda' (gardé au verrouillage)
   week: null, // lundi de la semaine affichée dans l'agenda
   weekAppts: [], // rendez-vous de cette semaine
-  moving: null, // { id, name } : rendez-vous à déplacer, en attente du nouveau créneau
+  moving: null, // { id, name, error } : rendez-vous à déplacer, en attente du nouveau créneau
+  note: null, // { text, undo? } : dernier message de l'agenda, effacé à l'action suivante
+  flash: null, // id du rendez-vous qui vient d'être noté ou déplacé (il luit un instant)
+  nextAppt: null, // prochain rendez-vous du client affiché
   todayAppts: [], // rendez-vous du jour (accueil de l'espace coiffeur)
   modal: null, // { type: 'client' | 'backup' | 'confirm-delete' | 'photo' | 'appt' | ..., ... }
   modalReturn: null // élément à refocaliser à la fermeture
@@ -91,6 +94,7 @@ const fmtDayShort = (iso) => new Intl.DateTimeFormat('fr-FR', { day: 'numeric', 
 const fmtDateMid = (iso) => new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(iso));
 const fmtDateLong = (iso) => cap(fmtDateMid(iso));
 const fmtTime = (iso) => new Intl.DateTimeFormat('fr-FR', { hour: 'numeric', minute: '2-digit' }).format(new Date(iso)).replace(':', ' h ');
+const fmtClock = () => fmtTime(new Date().toISOString());
 
 function ago(iso) {
   const start = new Date(iso);
@@ -213,14 +217,15 @@ const ICONS = {
   left: '<path d="M15 5l-7 7 7 7"/>',
   right: '<path d="M9 5l7 7-7 7"/>',
   move: '<path d="M12 3v18M3 12h18M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/>',
-  cloudOff: '<path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 10.5 3.75 3.75 0 0 1 17.25 18z"/><path d="M4 4l16 16"/>'
+  cloudOff: '<path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 10.5 3.75 3.75 0 0 1 17.25 18z"/><path d="M4 4l16 16"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>'
 };
 
 const icon = (name, size = 20) =>
   `<svg class="ic" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
 
-// Le vrai logo du salon (détouré, reflets compris).
-const logo = (size = 'sm') => `<img class="logo logo-${size}" src="logo.webp" alt="H&amp;B Salon" width="854" height="502">`;
+// Le vrai logo du salon, redessiné en vectoriel (dégradé doux d'or rose) : net à toutes les tailles.
+const logo = (size = 'sm') => `<img class="logo logo-${size}" src="logo.svg" alt="H&amp;B Salon" width="854" height="502">`;
 
 // Champ de formulaire avec emplacement pour son message d'erreur.
 const inputField = (cls, name, label, type, value, extra = '') =>
@@ -311,6 +316,9 @@ const SCROLLERS = ['.detail', '.results', '.coiffeur-body', '.client', '.client-
 // Redessine l'écran en gardant la position de défilement et le focus (sauf changement d'écran).
 function render({ top = false, focus = null } = {}) {
   const same = app.dataset.view === S.view;
+  // data-autofocus ne joue qu'à l'arrivée sur un écran ou à l'ouverture d'une fenêtre : redessiner la fenêtre
+  // (prestation cochée…) ne doit pas refocaliser le champ, sinon le clavier Android revient masquer l'écran.
+  const arriving = !same || (S.modal?.type || '') !== (app.dataset.modal || '');
   const scrolls = same ? SCROLLERS.map((sel) => app.querySelector(sel)?.scrollTop ?? 0) : null;
   const active = same && !focus ? selectorOf(document.activeElement) : null;
   if (S.modal?.type === 'photo') {
@@ -339,7 +347,11 @@ function render({ top = false, focus = null } = {}) {
   app.querySelectorAll('h1').forEach((h) => (h.tabIndex = -1));
   const wanted = focus || active;
   const target =
-    app.querySelector('[data-autofocus]') || (wanted ? app.querySelector(wanted) : null) || (same ? null : app.querySelector('h1'));
+    (arriving && !focus ? app.querySelector('[data-autofocus]') : null) ||
+    (wanted ? app.querySelector(wanted) : null) ||
+    (same ? null : app.querySelector('h1')) ||
+    // L'élément qui avait le focus a disparu de la fenêtre : on se rabat sur un bouton, jamais sur un champ.
+    (S.modal ? app.querySelector('.overlay [data-autofocus]:not(input):not(textarea)') : null);
   target?.focus({ preventScroll: true });
 }
 
@@ -397,14 +409,14 @@ function viewCoiffeur() {
     <header class="topbar">
       <div class="brand">${logo('sm')}<span class="muted brand-label">Espace coiffeur</span>
         <div class="space-switch" role="group" aria-label="Affichage">
-          <button type="button" class="space-btn" data-action="space" data-space="fiches" aria-pressed="${S.space === 'fiches'}">${icon('card', 18)} Fiches</button>
-          <button type="button" class="space-btn" data-action="space" data-space="agenda" aria-pressed="${S.space === 'agenda'}">${icon('calendar', 18)} Agenda</button>
+          <button type="button" class="space-btn" data-action="space" data-space="fiches" aria-pressed="${S.space === 'fiches'}">${icon('card', 22)} Fiches</button>
+          <button type="button" class="space-btn" data-action="space" data-space="agenda" aria-pressed="${S.space === 'agenda'}">${icon('calendar', 22)} Agenda</button>
         </div>
       </div>
       <div class="top-actions">
-        <span class="muted today">${fmtToday()}</span>
-        <button type="button" class="btn btn-quiet" data-action="change-pin">${icon('key', 18)} Changer le code</button>
+        <span class="today"><span class="today-date">${fmtToday()}</span><span class="clock" id="clock">${fmtClock()}</span></span>
         <button type="button" class="${backupClass()}" data-action="backup" id="backup-btn">${backupLabel()}</button>
+        <button type="button" class="btn btn-ghost btn-icon" data-action="settings" aria-label="Réglages" title="Réglages">${icon('gear', 22)}</button>
         <button type="button" class="btn btn-ghost" data-action="lock">${icon('lock', 18)} Verrouiller</button>
       </div>
     </header>
@@ -438,16 +450,35 @@ async function loadToday() {
   const from = new Date(d.getFullYear(), d.getMonth(), d.getDate());
   S.todayAppts = await db.appointmentsBetween(from.toISOString(), addDays(from, 1).toISOString());
 }
-const refreshAppts = () => Promise.all([loadWeek(), loadToday()]);
+const refreshAppts = () => Promise.all([loadWeek(), loadToday(), loadNextAppt()]);
 const findAppt = (id) => S.weekAppts.find((a) => a.id === id) || S.todayAppts.find((a) => a.id === id);
 
-// Durée proposée : dernier rendez-vous du client aux mêmes prestations, sinon durée habituelle ;
-// plus recalculée dès que le coiffeur l'a réglée lui-même.
+// Rendez-vous connus du jour de `iso` (semaine affichée et liste du jour).
+function dayAppts(iso) {
+  const day = new Date(iso).toDateString();
+  const out = new Map();
+  for (const a of [...S.weekAppts, ...S.todayAppts]) if (new Date(a.start).toDateString() === day) out.set(a.id, a);
+  return [...out.values()];
+}
+const freeOf = (m) => core.freeUntil({ id: m.id, start: m.start }, dayAppts(m.start));
+
+// Durée proposée : dernier rendez-vous passé du client aux mêmes prestations, sinon durée habituelle ;
+// sans prestation, un trou plus court que la demi-heure est pris tel quel. Plus recalculée dès que
+// le coiffeur l'a réglée lui-même.
 function prefill(m) {
   if (m.durationSet) return;
-  const p = core.prefillDuration(apptServices(m), m.prev.filter((a) => a.id !== m.id));
+  const nowIso = new Date().toISOString();
+  const p = core.prefillDuration(apptServices(m), m.prev.filter((a) => a.id !== m.id && a.start < nowIso));
   m.duration = p.duration;
   m.from = p.from;
+  m.fit = false;
+  if (!m.id && !m.services.size) {
+    const gap = freeOf(m).until - core.minutesOf(new Date(m.start));
+    if (gap >= core.STEP_MIN && gap < m.duration) {
+      m.duration = gap;
+      m.fit = true;
+    }
+  }
 }
 const apptServices = (m) => SERVICES.filter((s) => m.services.has(s));
 
@@ -468,8 +499,51 @@ async function openApptModal(a) {
     services: new Set(a.services),
     clientId: a.clientId,
     prev: a.clientId ? await db.appointmentsOf(a.clientId) : [],
-    error: ''
+    error: '',
+    changed: false
   });
+}
+
+// Heure de fin et place libre, recalculées à chaque réglage ; en corail dès que ça ne tient plus.
+function apptSpan(m) {
+  const s = core.minutesOf(new Date(m.start));
+  const end = s + m.duration;
+  const { until, next, inside } = freeOf(m);
+  let tail;
+  let over = true;
+  if (inside) tail = `chevauche le rendez-vous de ${apptName(next)} à ${fmtTime(next.start)}`;
+  else if (end > until && next) tail = `trop long, ${apptName(next)} arrive à ${fmtTime(next.start)}`;
+  else if (end > core.CLOSE_MIN) tail = 'trop tard, le salon ferme à 18 h';
+  else {
+    over = false;
+    tail = until >= core.CLOSE_MIN ? 'libre jusqu’à la fermeture' : `libre jusqu’à ${fmtMin(until)}`;
+  }
+  return { text: `Fin à ${fmtMin(end)} · ${tail}`, over };
+}
+const viewApptSpan = (m) => {
+  const { text, over } = apptSpan(m);
+  return `<p class="appt-span${over ? ' over' : ''}" id="appt-span">${esc(text)}</p>`;
+};
+// Annonce le réglage qui vient d'être fait, et le dépassement s'il y en a un.
+function announceSpan(m, what) {
+  const a = m.id && findAppt(m.id);
+  const span = a && core.endOf(a) <= new Date() ? null : apptSpan(m);
+  announce(span?.over ? `${what}. ${span.text}` : what);
+}
+
+// Fiches trouvées annoncées quand la frappe se pose (pas à chaque chiffre).
+let matchTimer = null;
+function announceMatches(m) {
+  clearTimeout(matchTimer);
+  matchTimer = setTimeout(() => {
+    if (S.modal !== m || !norm(m.query)) return;
+    const list = matchClients(m.query).slice(0, MAX_CHOICES);
+    announce(
+      list.length
+        ? `${list.length > 1 ? `${list.length} fiches` : '1 fiche'} : ${list.map(fullName).join(', ')}. Touchez la bonne, ou Autre personne.`
+        : 'Aucune fiche : une nouvelle sera créée avec le prénom.'
+    );
+  }, 800);
 }
 
 // Choix de la personne : fiches trouvées par le téléphone (ou le nom), « Autre personne », prénom.
@@ -499,7 +573,7 @@ function viewApptWho(m) {
 }
 
 function viewApptDur(m) {
-  const hint = m.durationSet ? '' : m.from ? `comme le ${fmtDayShort(m.from)}` : 'durée habituelle';
+  const hint = m.durationSet ? '' : m.fit ? 'tout le temps libre' : m.from ? `comme le ${fmtDayShort(m.from)}` : 'durée habituelle';
   return `
     <button type="button" class="btn btn-ghost btn-icon" data-action="appt-dur" data-step="-15" aria-label="Raccourcir de 15 minutes"${m.duration <= core.STEP_MIN ? ' disabled' : ''}>${icon('minus', 20)}</button>
     <output class="step-value">${core.fmtDuration(m.duration)}</output>
@@ -507,8 +581,13 @@ function viewApptDur(m) {
     ${hint ? `<span class="muted small">${hint}</span>` : ''}`;
 }
 
+// Chaque action à côté de ce qu'elle touche : Déplacer près de l'heure, la fiche près du nom ;
+// l'annulation seule à gauche, loin d'Enregistrer. Un rendez-vous terminé ne se déplace plus :
+// on corrige seulement ses prestations et sa durée réelle (elle sert de modèle pour les suivants).
 function viewApptDialog(m) {
   const a = m.id ? findAppt(m.id) : null;
+  const now = new Date();
+  const done = a && core.endOf(a) <= now;
   const start = new Date(m.start);
   const min = core.minutesOf(start);
   const c = a && apptClient(a);
@@ -516,26 +595,35 @@ function viewApptDialog(m) {
     ? `<div class="appt-person">
         <strong>${esc(apptName(a, true))}</strong>
         ${c?.phone || a.phone ? `<span class="muted">${esc(fmtPhone(c?.phone || a.phone))}</span>` : ''}
+        <button type="button" class="btn btn-ghost btn-sm appt-open" data-action="appt-open">${icon('card', 16)} Ouvrir la fiche</button>
       </div>
       ${c?.allergies ? `<div class="allergy allergy-mini">${icon('alert', 18)}<p><strong>Allergies</strong> <span>${esc(c.allergies)}</span></p></div>` : ''}`
     : `<div class="appt-query">
         <label class="field">Téléphone ou nom
           <input name="apptQuery" type="text" inputmode="${m.keyboard}" value="${esc(m.query)}" autocomplete="off" data-autofocus>
         </label>
-        <button type="button" class="btn btn-quiet btn-sm" data-action="appt-keyboard">${m.keyboard === 'tel' ? 'Clavier lettres' : 'Clavier chiffres'}</button>
+        <button type="button" class="btn btn-quiet btn-sm keyboard-btn" data-action="appt-keyboard">${m.keyboard === 'tel' ? 'Clavier lettres' : 'Clavier chiffres'}</button>
       </div>
       <div id="appt-who" class="appt-who">${viewApptWho(m)}</div>`;
-  return `
-    <form data-form="appt" class="dialog appt-dialog" novalidate>
-      <h2 class="serif" id="dlg-title" tabindex="-1"${a ? ' data-autofocus' : ''}>${a ? 'Rendez-vous' : 'Nouveau rendez-vous'}</h2>
-      <div class="appt-when">
-        <span class="appt-day">${fmtDayTitle(m.start)}</span>
+  const when = done
+    ? `<span class="step-value appt-done-time">${fmtMin(min)} – ${fmtMin(min + m.duration)}</span>`
+    : `<div class="appt-time-row">
         <div class="stepper" role="group" aria-label="Heure">
           <button type="button" class="btn btn-ghost btn-icon" data-action="appt-time" data-step="-15" aria-label="15 minutes plus tôt"${min <= core.OPEN_MIN ? ' disabled' : ''}>${icon('minus', 20)}</button>
           <output class="step-value">${fmtMin(min)}</output>
           <button type="button" class="btn btn-ghost btn-icon" data-action="appt-time" data-step="15" aria-label="15 minutes plus tard"${min >= core.CLOSE_MIN - core.STEP_MIN ? ' disabled' : ''}>${icon('plus', 20)}</button>
         </div>
+        ${a ? `<button type="button" class="btn btn-ghost btn-sm" data-action="appt-move">${icon('move', 16)} Déplacer</button>` : ''}
+      </div>`;
+  const closeLabel = !a ? 'Annuler' : m.changed ? 'Fermer sans enregistrer' : 'Fermer';
+  return `
+    <form data-form="appt" class="dialog appt-dialog" novalidate>
+      <h2 class="serif" id="dlg-title" tabindex="-1"${a ? ' data-autofocus' : ''}>${!a ? 'Nouveau rendez-vous' : done ? 'Rendez-vous passé' : 'Rendez-vous'}</h2>
+      <div class="appt-when">
+        <span class="appt-day">${fmtDayTitle(m.start)}</span>
+        ${when}
       </div>
+      ${done ? '' : viewApptSpan(m)}
       ${person}
       <div class="services services-compact" role="group" aria-label="Prestations prévues">
         ${SERVICES.map((s) => `<button type="button" class="service" aria-pressed="${m.services.has(s)}" data-action="appt-service" data-service="${esc(s)}">${icon('check', 16)}<span>${esc(s)}</span></button>`).join('')}
@@ -543,17 +631,9 @@ function viewApptDialog(m) {
       <div class="stepper" role="group" aria-label="Durée" id="appt-dur"><span class="label">Durée</span>${viewApptDur(m)}</div>
       <p class="err err-inline" id="appt-err" role="alert">${esc(m.error)}</p>
       <div class="form-actions appt-actions">
-        ${
-          a
-            ? `<div class="appt-more">
-                <button type="button" class="btn btn-danger-outline btn-sm" data-action="appt-cancel">${icon('trash', 16)} Annuler le rendez-vous</button>
-                <button type="button" class="btn btn-ghost btn-sm" data-action="appt-move">${icon('move', 16)} Déplacer</button>
-                <button type="button" class="btn btn-ghost btn-sm" data-action="appt-open">${icon('card', 16)} Ouvrir la fiche</button>
-              </div>`
-            : ''
-        }
+        ${a && !done ? `<button type="button" class="btn btn-danger-outline btn-sm" data-action="appt-cancel">${icon('trash', 16)} Annuler le rendez-vous</button>` : ''}
         <div class="appt-main">
-          <button type="button" class="btn btn-ghost" data-action="close-modal">${a ? 'Fermer' : 'Annuler'}</button>
+          <button type="button" class="btn btn-ghost" data-action="close-modal">${closeLabel}</button>
           <button type="submit" class="btn btn-accent">Enregistrer</button>
         </div>
       </div>
@@ -594,8 +674,17 @@ async function saveAppt(m) {
   };
   let client = a ? apptClient(a) : m.clientId && S.clients.find((c) => c.id === m.clientId);
   const firstName = (m.firstName || (hasLetters(m.query || '') ? m.query : '')).trim();
+  // Des fiches proposées mais aucune touchée : pas de nouvelle fiche par surprise (elle n'aurait pas l'allergie).
+  const matches = !a && !client && !m.other ? matchClients(m.query) : [];
+  if (matches.length) {
+    return fail(
+      matches.length === 1
+        ? `Touchez la fiche de ${fullName(matches[0])}, ou « Autre personne » pour une nouvelle fiche.`
+        : 'Touchez la bonne fiche, ou « Autre personne » pour une nouvelle fiche.'
+    );
+  }
   const newPerson = !a && !client && (m.other || norm(m.query));
-  if (!a && !client && !(newPerson && firstName)) return fail('Choisissez la fiche ou tapez un prénom.');
+  if (!a && !client && !(newPerson && firstName)) return fail('Tapez le téléphone ou le prénom du client.');
   const problem = await slotProblem({ id: m.id, start: m.start, duration: m.duration }, !a || m.start !== a.start);
   if (problem) return fail(problem);
   if (newPerson && !client) {
@@ -603,7 +692,7 @@ async function saveAppt(m) {
     client = await db.saveClient({ firstName, phone });
     await loadClients();
   }
-  await db.saveAppointment({
+  const saved = await db.saveAppointment({
     ...(a || {}),
     clientId: a ? a.clientId : client.id,
     firstName: client ? client.firstName : a.firstName,
@@ -613,8 +702,19 @@ async function saveAppt(m) {
     services: apptServices(m)
   });
   await refreshAppts();
+  const text = `${a ? 'Rendez-vous modifié' : 'Rendez-vous noté'} : ${apptName(saved, true)}, ${fmtDayTitle(saved.start).toLowerCase()} à ${fmtTime(saved.start)}.`;
+  agendaNote(text);
+  S.flash = saved.id;
+  S.modalReturn = `[data-action="appt"][data-id="${saved.id}"]`; // le focus va au rendez-vous noté
   closeModal();
-  toast(a ? 'Rendez-vous modifié' : 'Rendez-vous enregistré');
+  S.flash = null;
+  announce(text);
+}
+
+// Message de l'agenda, sous le titre de la semaine (à la place de la consigne) : il reste jusqu'à
+// la prochaine action, avec au besoin de quoi revenir en arrière.
+function agendaNote(text, undo = null) {
+  S.note = { text, undo };
 }
 
 // Ouvre la fiche du rendez-vous, prestations prévues cochées si la visite du jour est encore vide.
@@ -632,6 +732,7 @@ async function openApptClient(a) {
   openModal({ type: 'client', client: { firstName: a.firstName, lastName: '', phone: fmtPhone(a.phone), email: '', allergies: '' } });
 }
 
+// Le refus reste écrit sous le titre (en corail) jusqu'au prochain essai ; la réussite se défait d'un appui.
 async function moveTo(startIso) {
   const a = await db.getAppointment(S.moving.id); // peut être dans une autre semaine que celle affichée
   if (!a) {
@@ -641,14 +742,54 @@ async function moveTo(startIso) {
   }
   const problem = await slotProblem({ id: a.id, start: startIso, duration: a.duration }, true);
   if (problem) {
-    toast(problem);
+    S.moving.error = `${problem} Touchez un autre créneau.`;
+    render();
+    announce(S.moving.error);
     return;
   }
   await db.saveAppointment({ ...a, start: startIso });
   S.moving = null;
   await refreshAppts();
-  render();
-  toast(`Rendez-vous déplacé au ${fmtDayTitle(startIso).toLowerCase()} à ${fmtTime(startIso)}`);
+  const text = `${apptName(a)} : déplacé au ${fmtDayTitle(startIso).toLowerCase()} à ${fmtTime(startIso)}.`;
+  agendaNote(text, { kind: 'move', id: a.id, start: a.start, label: 'Remettre comme avant' });
+  S.flash = a.id;
+  render({ focus: '[data-action="undo"]' });
+  S.flash = null;
+  announce(text);
+}
+
+// Défaire le dernier déplacement ou la dernière annulation. Un rendez-vous rétabli repart sous un
+// nouvel identifiant : l'effacement de l'ancien, peut-être déjà envoyé en ligne, ne le touchera pas.
+async function undoAgenda() {
+  const u = S.note?.undo;
+  if (!u) return;
+  let record;
+  if (u.kind === 'move') {
+    const a = await db.getAppointment(u.id);
+    if (!a) return;
+    record = { ...a, start: u.start };
+  } else {
+    const { id, syncedAt, dirty, updatedAt, ...rest } = u.appt;
+    record = rest;
+  }
+  const problem = await slotProblem(record, false);
+  if (problem) {
+    agendaNote(`Impossible de revenir en arrière : ${problem.charAt(0).toLowerCase()}${problem.slice(1)}`);
+    render();
+    announce(S.note.text);
+    return;
+  }
+  const saved = await db.saveAppointment(record);
+  await refreshAppts();
+  const text =
+    u.kind === 'move'
+      ? `${apptName(saved)} : remis au ${fmtDayTitle(saved.start).toLowerCase()} à ${fmtTime(saved.start)}.`
+      : `Rendez-vous de ${apptName(saved, true)} rétabli.`;
+  agendaNote(text);
+  S.flash = saved.id;
+  render({ focus: '.agenda-head h1' });
+  S.flash = null;
+  announce(text);
 }
 
 const DAY_NAMES = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
@@ -663,10 +804,13 @@ const hourLabel = (min) => (min % 60 ? fmtMin(min) : `${min / 60} h`);
 
 // Le nom actuel de la fiche (complété par le client entre-temps) ; la copie du rendez-vous sinon.
 const apptClient = (a) => (a.clientId ? S.clients.find((c) => c.id === a.clientId) : null);
+// Nom court : le prénom, avec l'initiale du nom quand une autre fiche porte le même prénom.
 function apptName(a, full = false) {
   const c = apptClient(a);
-  if (c) return full ? fullName(c) : c.firstName || fullName(c);
-  return a.firstName || 'Sans nom';
+  if (!c) return a.firstName || 'Sans nom';
+  if (full || !c.firstName) return fullName(c);
+  const twin = c.lastName && S.clients.some((o) => o.id !== c.id && norm(o.firstName) === norm(c.firstName));
+  return twin ? `${c.firstName} ${c.lastName.charAt(0)}.` : c.firstName;
 }
 const apptAllergy = (a) => apptClient(a)?.allergies || '';
 const shortServices = (a) => a.services.map((s) => SHORT_SERVICE[s] || s).join(', ');
@@ -676,21 +820,32 @@ async function loadWeek() {
   S.weekAppts = await db.appointmentsBetween(S.week.toISOString(), addDays(S.week, 7).toISOString());
 }
 
-// Créneaux libres d'une demi-heure ; celui dont le début est pris commence à la fin du rendez-vous.
+// Morceaux libres de chaque demi-heure, au quart d'heure près : ils commencent après le rendez-vous
+// qui déborde, s'arrêtent au suivant, et pas avant le prochain quart d'heure aujourd'hui.
 function freeSlots(day, appts, now) {
   const out = [];
+  const sorted = [...appts].sort((x, y) => x.start.localeCompare(y.start));
+  const isToday = day.toDateString() === now.toDateString();
+  const nowMin = isToday ? core.minutesOf(now) : day < now ? Infinity : -Infinity;
   for (let m = core.OPEN_MIN; m < core.CLOSE_MIN; m += core.SLOT_MIN) {
     let start = m;
-    for (const a of appts) {
+    let end = m + core.SLOT_MIN;
+    for (const a of sorted) {
       const s = core.minutesOf(new Date(a.start));
       if (s <= start && s + a.duration > start) start = s + a.duration;
     }
-    if (start >= m + core.SLOT_MIN) continue;
-    out.push({ top: m, start, end: m + core.SLOT_MIN, past: atMinutes(day, start) < now });
+    if (start < nowMin) start = Math.ceil(nowMin / core.STEP_MIN) * core.STEP_MIN;
+    for (const a of sorted) {
+      const s = core.minutesOf(new Date(a.start));
+      if (s > start && s < end) end = s;
+    }
+    if (start < end) out.push({ start, end });
   }
   return out;
 }
 
+// Les créneaux et les rendez-vous sont écrits dans l'ordre des heures (lecture d'écran) ; le temps
+// écoulé est voilé et n'offre plus de créneau.
 function viewDayColumn(day, i, now) {
   const isToday = day.toDateString() === now.toDateString();
   const appts = S.weekAppts.filter((a) => new Date(a.start).toDateString() === day.toDateString());
@@ -698,59 +853,96 @@ function viewDayColumn(day, i, now) {
   const dayName = `${DAY_NAMES[i]} ${fmtDay(day)}`;
   const lines = [];
   for (let m = core.OPEN_MIN + 30; m < core.CLOSE_MIN; m += 30) lines.push(`<i class="hl${m % 60 ? ' half' : ''}" style="top:${pct(m)}"></i>`);
-  const slots = freeSlots(day, appts, now)
-    .map(
-      (f) =>
-        `<button type="button" class="slot" style="top:${pct(f.top)};height:${span(f.end - f.top)}" data-action="slot" data-day="${i}" data-min="${f.start}"${f.past ? ' disabled' : ''} aria-label="${esc(`${dayName}, ${fmtMin(f.start)}, libre`)}"></button>`
-    )
-    .join('');
-  const blocks = appts
-    .map((a) => {
-      const end = core.endOf(a);
-      const { lane, lanes: n } = lanes.get(a.id);
-      const allergy = apptAllergy(a);
-      const label = [`${apptName(a, true)}, ${dayName}, ${fmtTime(a.start)} à ${fmtTime(end.toISOString())}`, a.services.join(', '), allergy ? 'allergie' : '']
-        .filter(Boolean)
-        .join(', ');
-      return `<button type="button" class="appt-block${end <= now ? ' past' : ''}${S.moving?.id === a.id ? ' moving' : ''}"
-        style="top:${pct(core.minutesOf(new Date(a.start)))};height:${span(a.duration)};left:calc(${(lane / n) * 100}% + 2px);width:calc(${100 / n}% - 4px)"
-        data-action="appt" data-id="${a.id}" aria-label="${esc(label)}">
-        <span class="appt-name">${allergy ? icon('alert', 14) : ''}${esc(apptName(a))}</span>
-        ${a.duration >= 45 && a.services.length ? `<span class="appt-sub">${esc(shortServices(a))}</span>` : ''}
-      </button>`;
-    })
-    .join('');
   const nowMin = core.minutesOf(now);
+  const elapsed = now >= atMinutes(day, core.CLOSE_MIN) ? OPEN_SPAN : isToday ? Math.max(0, nowMin - core.OPEN_MIN) : 0;
+  const veil = elapsed ? `<i class="past-veil" style="height:${span(elapsed)}"></i>` : '';
+  const items = freeSlots(day, appts, now).map((f) => ({
+    min: f.start,
+    html: `<button type="button" class="slot" style="top:${pct(f.start)};height:${span(f.end - f.start)}" data-action="slot" data-day="${i}" data-min="${f.start}" aria-label="${esc(`${dayName}, ${fmtMin(f.start)}, libre`)}"></button>`
+  }));
+  for (const a of appts) {
+    const start = new Date(a.start);
+    const end = core.endOf(a);
+    const done = end <= now;
+    const live = !done && start <= now;
+    const { lane, lanes: n } = lanes.get(a.id);
+    const allergy = apptAllergy(a);
+    const label = [
+      `${apptName(a, true)}, ${dayName}, ${fmtTime(a.start)} à ${fmtTime(end.toISOString())}`,
+      a.services.join(', '),
+      allergy ? 'allergie' : '',
+      done ? 'terminé' : live ? 'en cours' : ''
+    ]
+      .filter(Boolean)
+      .join(', ');
+    const cls = [
+      'appt-block',
+      done && 'past',
+      live && 'live',
+      a.duration < core.SLOT_MIN && 'short',
+      S.moving?.id === a.id && 'moving',
+      S.flash === a.id && 'flash'
+    ]
+      .filter(Boolean)
+      .join(' ');
+    items.push({
+      min: core.minutesOf(start),
+      html: `<button type="button" class="${cls}"
+        style="top:${pct(core.minutesOf(start))};height:${span(a.duration)};left:calc(${(lane / n) * 100}% + 2px);width:calc(${100 / n}% - 4px)"
+        data-action="appt" data-id="${a.id}" aria-label="${esc(label)}">
+        <span class="appt-name">${allergy ? icon('alert', 14) : ''}<span class="appt-n">${esc(apptName(a))}</span></span>
+        ${a.duration >= 45 && a.services.length ? `<span class="appt-sub">${esc(shortServices(a))}</span>` : ''}
+      </button>`
+    });
+  }
+  items.sort((x, y) => x.min - y.min);
   const nowLine = isToday && nowMin > core.OPEN_MIN && nowMin < core.CLOSE_MIN ? `<i class="now-line" style="top:${pct(nowMin)}"></i>` : '';
-  return `<div class="day-col${isToday ? ' is-today' : ''}">${lines.join('')}${slots}${blocks}${nowLine}</div>`;
+  return `<div class="day-col${isToday ? ' is-today' : ''}" role="group" aria-label="${esc(dayName + (isToday ? ', aujourd’hui' : ''))}">
+    ${veil}${lines.join('')}${items.map((x) => x.html).join('')}${nowLine}</div>`;
+}
+
+// Ligne sous le titre de la semaine : consigne, message du déplacement en cours, ou dernier message.
+// Elle garde la même hauteur ; le bouton qui l'accompagne se range avec la navigation des semaines.
+function viewAgendaLine(pastWeek) {
+  if (S.moving) {
+    return S.moving.error
+      ? `<p class="agenda-line is-error">${esc(S.moving.error)}</p>`
+      : `<p class="agenda-line is-move">${icon('move', 18)}<span>Touchez le nouveau créneau de <strong>${esc(S.moving.name)}</strong>.</span></p>`;
+  }
+  if (S.note) return `<p class="agenda-line is-note">${icon('check', 18)}<span>${esc(S.note.text)}</span></p>`;
+  return `<p class="agenda-line muted">${pastWeek ? 'Semaine passée : consultation seulement.' : 'Touchez un créneau libre pour noter un rendez-vous.'}</p>`;
 }
 
 function viewAgenda() {
   const now = new Date();
   const days = core.weekDays(S.week);
   const current = S.week.getTime() === core.defaultWeek(now).getTime();
+  const pastWeek = atMinutes(days[5], core.CLOSE_MIN) <= now;
   const hours = [];
-  for (let m = core.OPEN_MIN; m < core.CLOSE_MIN; m += 30) {
-    if (m === core.OPEN_MIN || m % 60 === 0) hours.push(`<span class="hour${m === core.OPEN_MIN ? ' first' : ''}" style="top:${pct(m)}">${hourLabel(m)}</span>`);
+  for (let m = core.OPEN_MIN; m <= core.CLOSE_MIN; m += 30) {
+    if (m === core.OPEN_MIN || m % 60 === 0) {
+      const edge = m === core.OPEN_MIN ? ' first' : m === core.CLOSE_MIN ? ' last' : '';
+      hours.push(`<span class="hour${edge}" style="top:${pct(m)}">${hourLabel(m)}</span>`);
+    }
   }
+  const extra = S.moving
+    ? `<button type="button" class="btn btn-ghost" data-action="move-cancel">${icon('x', 18)} Ne pas déplacer</button>`
+    : S.note?.undo
+      ? `<button type="button" class="btn btn-ghost" data-action="undo">${icon('undo', 18)} ${S.note.undo.label}</button>`
+      : '';
   return `
   <div class="agenda-head">
-    <div>
+    <div class="agenda-title">
       <h1 class="serif">${core.weekLabel(S.week)}</h1>
-      <p class="muted">Touchez un créneau libre pour noter un rendez-vous.</p>
+      ${viewAgendaLine(pastWeek)}
     </div>
     <div class="week-nav">
+      ${extra}
       <button type="button" class="btn btn-ghost btn-icon" data-action="week-prev" aria-label="Semaine précédente">${icon('left', 20)}</button>
       <button type="button" class="btn btn-ghost" data-action="week-now"${current ? ' disabled' : ''}>Cette semaine</button>
       <button type="button" class="btn btn-ghost btn-icon" data-action="week-next" aria-label="Semaine suivante">${icon('right', 20)}</button>
     </div>
   </div>
-  ${
-    S.moving
-      ? `<div class="notice move-notice">${icon('move', 20)}<span>Touchez le nouveau créneau de <strong>${esc(S.moving.name)}</strong>.</span>
-          <button type="button" class="btn btn-sm btn-ghost" data-action="move-cancel">Annuler</button></div>`
-      : ''
-  }
   <div class="week">
     <div class="week-row week-days" aria-hidden="true">
       <span></span>
@@ -836,13 +1028,17 @@ function viewEmpty() {
     <div class="today-rows">
       ${list
         .map((a) => {
-          const done = core.endOf(a) <= now;
-          const info = [a.services.join(', '), core.fmtDuration(a.duration)].filter(Boolean).join(' · ');
+          const end = core.endOf(a);
+          const done = end <= now;
+          const live = !done && new Date(a.start) <= now;
+          const info = [a.services.join(', '), `${core.fmtDuration(a.duration)}, jusqu’à ${fmtTime(end.toISOString())}`].filter(Boolean).join(' · ');
+          const state = done ? 'terminé' : live ? 'en cours' : a.id === next ? 'prochain rendez-vous' : '';
           return `<button type="button" class="today-row${done ? ' past' : ''}${a.id === next ? ' next' : ''}" data-action="today-appt" data-id="${a.id}">
             <span class="today-time">${fmtTime(a.start)}</span>
             <span class="today-who"><strong>${esc(apptName(a, true))}</strong><span>${esc(info)}</span></span>
+            ${live ? `<span class="today-live">${icon('clock', 16)} En cours</span>` : ''}
             ${apptAllergy(a) ? `<span class="today-allergy">${icon('alert', 16)} Allergie</span>` : ''}
-            ${a.id === next ? '<span class="sr-only">, prochain rendez-vous</span>' : ''}
+            ${state ? `<span class="sr-only">, ${state}</span>` : ''}
           </button>`;
         })
         .join('')}
@@ -887,6 +1083,14 @@ function lastColorLine() {
   return lc ? `<p class="last-color">Dernière couleur ${core.agoText(lc.days)} (${fmtDayShort(lc.date)})</p>` : '';
 }
 
+// « C'est quand, mon rendez-vous ? » : la réponse est sur la fiche, avec un lien vers la semaine.
+function nextApptLine() {
+  const a = S.nextAppt;
+  if (!a) return '';
+  return `<p class="next-appt">${icon('calendar', 16)}<span>Prochain rendez-vous : ${fmtDayTitle(a.start).toLowerCase()} à ${fmtTime(a.start)}</span>
+    <button type="button" class="link" data-action="show-appt" data-id="${a.id}">Voir dans l’agenda</button></p>`;
+}
+
 function viewClientDetail() {
   const c = S.client;
   const contact = [fmtPhone(c.phone), c.email].filter(Boolean).join(' · ') || 'Coordonnées à compléter par le client';
@@ -897,6 +1101,7 @@ function viewClientDetail() {
       <h1 class="serif">${esc(fullName(c))}</h1>
       <p class="muted">${esc(contact)}</p>
       ${lastColorLine()}
+      ${nextApptLine()}
       ${consent ? `<p class="consent-line">${consent}</p>` : ''}
     </div>
     <button type="button" class="btn btn-ghost" data-action="edit-client">${icon('edit', 18)} Modifier la fiche</button>
@@ -1243,6 +1448,17 @@ function viewModal() {
           <button type="button" class="btn btn-danger-outline btn-lg" data-action="confirm-no-consent">Ne pas conserver</button>
         </div>
       </div>`;
+  } else if (m.type === 'settings') {
+    body = `
+      <div class="dialog dialog-sm">
+        <h2 class="serif" id="dlg-title">Réglages</h2>
+        <section class="dlg-section dlg-section-first" aria-labelledby="sec-pin">
+          <h3 id="sec-pin">Code de l’espace coiffeur</h3>
+          <p class="muted small">Le code à 4 chiffres qui protège les fiches, les formules et l’agenda. L’espace se verrouille seul après 10 minutes sans activité.</p>
+          <div><button type="button" class="btn btn-ghost" data-action="change-pin" data-autofocus>${icon('key', 18)} Changer le code</button></div>
+        </section>
+        <div class="form-actions"><button type="button" class="btn btn-ghost" data-action="close-modal">Fermer</button></div>
+      </div>`;
   } else if (m.type === 'appt') {
     body = viewApptDialog(m);
   } else if (m.type === 'confirm-appt-cancel') {
@@ -1251,7 +1467,7 @@ function viewModal() {
         <h2 class="serif" id="dlg-title">Annuler ce rendez-vous ?</h2>
         <p class="muted">${esc(m.name)}, ${esc(fmtDayTitle(m.start).toLowerCase())} à ${fmtTime(m.start)}. Il disparaîtra de l’agenda.</p>
         <div class="form-actions">
-          <button type="button" class="btn btn-ghost" data-action="close-modal" data-autofocus>Garder</button>
+          <button type="button" class="btn btn-ghost" data-action="keep-appt" data-autofocus>Garder</button>
           <button type="button" class="btn btn-danger" data-action="confirm-appt-cancel">${icon('trash', 18)} Annuler le rendez-vous</button>
         </div>
       </div>`;
@@ -1330,6 +1546,13 @@ async function loadHistory() {
   S.history = await db.visitsOf(S.clientId);
   const withFormula = S.history.find((v) => hasFormula(v.formula));
   S.lastFormula = withFormula ? { formula: withFormula.formula, date: withFormula.date } : null;
+  await loadNextAppt();
+}
+
+async function loadNextAppt() {
+  if (!S.clientId) return;
+  const now = new Date();
+  S.nextAppt = (await db.appointmentsOf(S.clientId)).filter((a) => core.endOf(a) > now).sort((a, b) => a.start.localeCompare(b.start))[0] || null;
 }
 
 async function selectClient(id) {
@@ -1367,6 +1590,7 @@ async function enterCoiffeur() {
     S.checkout = null;
   }
   S.autoLocked = false;
+  S.moving = null; // un déplacement laissé en plan au verrouillage n'attend plus à la reprise
   await loadClients();
   await refreshAppts();
   if (S.clientId) await selectClient(S.clientId);
@@ -1605,6 +1829,7 @@ const actions = {
   },
   lock: () => {
     parkDraft();
+    S.moving = null;
     S.clientId = null;
     S.client = null;
     S.query = '';
@@ -1615,6 +1840,7 @@ const actions = {
     go('pin');
   },
   backup: () => openModal({ type: 'backup' }),
+  settings: () => openModal({ type: 'settings' }),
   'sync-now': () => {
     if (navigator.onLine) sync.syncNow();
     else toast('Pas de réseau pour l’instant : l’envoi partira tout seul au retour du réseau.');
@@ -1650,7 +1876,9 @@ const actions = {
   },
   appt: (el) => {
     if (S.moving) {
-      toast('Touchez un créneau libre.');
+      S.moving.error = S.moving.id === el.dataset.id ? 'C’est son horaire actuel. Touchez un créneau libre.' : 'Ce créneau est déjà pris. Touchez un créneau libre.';
+      render();
+      announce(S.moving.error);
       return;
     }
     const a = findAppt(el.dataset.id);
@@ -1682,8 +1910,10 @@ const actions = {
     const m = S.modal;
     const s = el.dataset.service;
     m.services.has(s) ? m.services.delete(s) : m.services.add(s);
+    m.changed = true;
     prefill(m);
     render();
+    announceSpan(m, `${s} ${m.services.has(s) ? 'cochée' : 'décochée'}, durée ${core.fmtDuration(m.duration)}`);
   },
   'appt-time': (el) => {
     const m = S.modal;
@@ -1691,20 +1921,22 @@ const actions = {
     const min = Math.min(Math.max(core.minutesOf(start) + Number(el.dataset.step), core.OPEN_MIN), core.CLOSE_MIN - core.STEP_MIN);
     m.start = atMinutes(start, min).toISOString();
     m.error = '';
+    m.changed = true;
     render();
-    announce(fmtMin(min));
+    announceSpan(m, fmtMin(min));
   },
   'appt-dur': (el) => {
     const m = S.modal;
     m.duration = Math.max(core.STEP_MIN, m.duration + Number(el.dataset.step));
     m.durationSet = true;
     m.error = '';
+    m.changed = true;
     render();
-    announce(`Durée ${core.fmtDuration(m.duration)}`);
+    announceSpan(m, `Durée ${core.fmtDuration(m.duration)}`);
   },
   'appt-move': () => {
     const a = findAppt(S.modal.id);
-    S.moving = { id: a.id, name: apptName(a) };
+    S.moving = { id: a.id, name: apptName(a), error: '' };
     S.space = 'agenda';
     S.modal = null;
     S.modalReturn = null;
@@ -1713,21 +1945,43 @@ const actions = {
   },
   'move-cancel': () => {
     S.moving = null;
-    render();
+    render({ focus: '.agenda-head h1' });
+  },
+  undo: undoAgenda,
+  'show-appt': async (el) => {
+    const a = await db.getAppointment(el.dataset.id);
+    if (!a) return;
+    S.space = 'agenda';
+    S.week = core.weekStart(new Date(a.start));
+    await loadWeek();
+    S.flash = a.id;
+    render({ focus: `[data-action="appt"][data-id="${a.id}"]` });
+    S.flash = null;
   },
   'appt-open': () => openApptClient(findAppt(S.modal.id)),
   'today-appt': (el) => openApptClient(findAppt(el.dataset.id)),
   'appt-cancel': () => {
     const a = findAppt(S.modal.id);
-    openModal({ type: 'confirm-appt-cancel', id: a.id, name: apptName(a, true), start: a.start });
+    const back = { modal: S.modal, ret: S.modalReturn };
+    openModal({ type: 'confirm-appt-cancel', id: a.id, name: apptName(a, true), start: a.start, back });
+  },
+  // « Garder » ramène à la fenêtre du rendez-vous, telle qu'on l'avait laissée.
+  'keep-appt': () => {
+    const { modal, ret } = S.modal.back;
+    S.modal = modal;
+    S.modalReturn = ret;
+    render({ focus: '[data-action="appt-cancel"]' });
   },
   'confirm-appt-cancel': async () => {
-    await db.deleteAppointment(S.modal.id);
+    const a = findAppt(S.modal.id);
+    await db.deleteAppointment(a.id);
     await refreshAppts();
     S.modal = null;
     S.modalReturn = null;
-    render();
-    toast('Rendez-vous annulé');
+    const text = `Rendez-vous de ${apptName(a, true)} annulé (${fmtDayTitle(a.start).toLowerCase()} à ${fmtTime(a.start)}).`;
+    agendaNote(text, { kind: 'cancel', appt: a, label: 'Rétablir' });
+    render({ focus: '[data-action="undo"]' });
+    announce(text);
   },
   'week-prev': () => showWeek(addDays(S.week, -7)),
   'week-next': () => showWeek(addDays(S.week, 7)),
@@ -1906,6 +2160,10 @@ const actions = {
 app.addEventListener('click', (e) => {
   const el = e.target.closest('[data-action]');
   if (!el || el.disabled) return;
+  // Un choix touché prend le focus : le champ de saisie le perd et le clavier Android se referme.
+  if (el.tagName === 'BUTTON' && el.dataset.action !== 'stay' && document.activeElement !== el) el.focus({ preventScroll: true });
+  // Le message de l'agenda (et sa possibilité de revenir en arrière) ne vaut que jusqu'à l'action suivante.
+  if (S.note && el.dataset.action !== 'undo') S.note = null;
   const fn = actions[el.dataset.action];
   if (fn) fn(el, e);
 });
@@ -1924,6 +2182,12 @@ app.addEventListener('pointerdown', (e) => {
 // Téléphone mis en forme (98.62.13) en quittant le champ, comme partout ailleurs dans l'appli.
 app.addEventListener('focusout', (e) => {
   const el = e.target;
+  // Numéro tapé dans « Téléphone ou nom » : même mise en forme (la recherche ne regarde que les chiffres).
+  if (el.name === 'apptQuery' && S.modal?.type === 'appt' && !hasLetters(el.value) && fmtPhone(el.value) !== el.value) {
+    el.value = fmtPhone(el.value);
+    S.modal.query = el.value;
+    return;
+  }
   if (el.type !== 'tel' || fmtPhone(el.value) === el.value) return;
   el.value = fmtPhone(el.value);
   bindCheckout(el);
@@ -1944,9 +2208,11 @@ app.addEventListener('input', (e) => {
       m.prev = [];
       prefill(m);
       app.querySelector('#appt-dur').innerHTML = `<span class="label">Durée</span>${viewApptDur(m)}`;
+      app.querySelector('#appt-span').outerHTML = viewApptSpan(m);
     }
     app.querySelector('#appt-who').innerHTML = viewApptWho(m);
     app.querySelector('#appt-err').textContent = '';
+    announceMatches(m);
   } else if (el.name === 'apptFirst' && S.modal?.type === 'appt') {
     S.modal.firstName = el.value;
   } else if (el.matches('[data-bind]')) {
@@ -2109,7 +2375,9 @@ const TAB_KEYS = { ArrowLeft: 'toggle', ArrowRight: 'toggle', Home: 'visit', End
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     if (S.modal?.type === 'photo') actions['close-photo']();
+    else if (S.modal?.type === 'confirm-appt-cancel') actions['keep-appt']();
     else if (S.modal) closeModal();
+    else if (S.moving && S.view === 'coiffeur') actions['move-cancel']();
     else if (S.view === 'pin' && (S.pin.cancel || S.pin.mode === 'recover')) actions['pin-cancel']();
     else if (S.view === 'thanks') go('welcome');
     return;
@@ -2205,6 +2473,22 @@ async function onPulled() {
   if (S.view === 'coiffeur' && !S.modal) render();
 }
 
+// Heure de la barre du haut, trait « maintenant » et voile du temps écoulé, mis à jour chaque minute
+// sans redessiner l'écran (un rendu en plein appui ferait perdre le toucher).
+function tickClock() {
+  const clock = document.getElementById('clock');
+  if (clock) clock.textContent = fmtClock();
+  const min = core.minutesOf(new Date());
+  const col = app.querySelector('.day-col.is-today');
+  if (col && min > core.OPEN_MIN && min < core.CLOSE_MIN) {
+    const line = col.querySelector('.now-line');
+    const veil = col.querySelector('.past-veil');
+    if (line) line.style.top = pct(min);
+    if (veil) veil.style.height = span(min - core.OPEN_MIN);
+  }
+  setTimeout(tickClock, 60000 - (Date.now() % 60000) + 50);
+}
+
 // ---------- Démarrage ----------
 
 (async function boot() {
@@ -2213,6 +2497,7 @@ async function onPulled() {
   await db.purgeLocalOnly(new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString());
   sync.start(onPulled);
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');
+  tickClock();
   const pinLock = await db.getSetting('pinLock');
   if (pinLock) {
     S.pinFails = pinLock.fails || 0;

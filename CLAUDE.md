@@ -10,14 +10,16 @@ Salon en Nouvelle-Calédonie : téléphones à 6 chiffres, affichés `98.62.13` 
     - Brouillons de visite par client dans `S.drafts` (mémoire seulement) ; `parkDraft()` avant de changer de client ou de passer la tablette.
     - Bandeaux du coiffeur : `addNotice()` / `dropNotices()` ; ceux liés à une visite (`visitId`) disparaissent quand elle est validée ou effacée.
     - Annonces lecteur d'écran : `announce()` (zone `#announce`) et `toast()` (zone `#toast`, hors de `#app`).
-    - Fenêtres : `S.modal`, redessinées avec l'écran ; le fondu d'arrivée ne joue que quand le type de fenêtre change (`app.dataset.modal`).
+    - Fenêtres : `S.modal`, redessinées avec l'écran ; le fondu d'arrivée ne joue que quand le type de fenêtre change (`app.dataset.modal`). `data-autofocus` ne joue aussi qu'à l'ouverture : un choix touché garde le focus, sinon le clavier Android revient masquer la fenêtre.
+    - Réglages (roue dentée de la barre du haut) : fenêtre `settings`, avec « Changer le code ».
     - PIN oublié : code de déblocage à 8 chiffres connu du seul installateur. app.js étant public, seule son empreinte PBKDF2 y figure (`RECOVERY_SALT`, `RECOVERY_ITER`, `RECOVERY_HASH`) ; ne jamais revenir à un simple SHA-256.
   - `agenda-core.js` : calculs de l'agenda sans écran ni stockage (semaines, créneaux, chevauchements, durées, « dernière couleur »), testés par `node --test "tests/*.test.js"`.
     - Agenda dans `app.js` : `S.space` (« Fiches » / « Agenda »), `S.week`, `S.weekAppts`, `S.todayAppts`, `S.moving` ; recharger avec `refreshAppts()` après toute écriture de rendez-vous.
+    - Retours de l'agenda sous le titre de la semaine (`agendaNote()`, `S.note`, effacé à l'action suivante), jamais en toast ; « Remettre comme avant » / « Rétablir » (`undoAgenda`). Un rendez-vous rétabli reprend un nouvel identifiant : nos effacements reviennent à la synchro et effaceraient l'ancien.
   - `db.js` : stockage IndexedDB (clients, visites, photos avec miniature `thumb`, rendez-vous `appointments`, réglages dont `pinHash` et `pinLock`). Toute écriture locale pose `dirty: 1` ; les effacements vont dans le magasin `deletions`. Changer la structure = nouvelle `DB_VERSION` avec migration dans `onupgradeneeded`.
   - `sync.js` : sauvegarde Supabase en REST direct (pas de bibliothèque). Envoie `dirty` + effacements, puis récupère les nouveautés (`synced_at` posé par le serveur). Les clients sans `consentAt` ne partent jamais en ligne, ni leurs rendez-vous ; un rendez-vous `localOnly` (gardé après un refus RGPD, via `detachAppointments` appelé avant `deleteClient`) non plus ; il est purgé au démarrage une fois son jour passé (`purgeLocalOnly`). Connexion dans la fenêtre « Sauvegarde ».
   - `sw.js` : hors-ligne. **Incrémenter `CACHE` à chaque mise en ligne**, sinon la tablette garde l'ancienne version.
-  - `logo.webp` : vrai logo détouré ; icônes de `icons/` générées par `python -I tools/icones.py app/logo.webp app/icons`.
+  - `logo.svg` : vrai logo redessiné en vectoriel (dégradé doux d'or rose) par `tools/logo-vectoriel.py` depuis `tools/logo-origine.webp` (H et côté gauche du B en géométrie exacte, « SALON » en Cormorant). Icônes de `icons/` : rendre `logo.svg` en PNG à fond transparent (navigateur), puis `python -I tools/icones.py <png> app/icons`.
   - `fonts/` : polices variables auto-hébergées (un fichier par famille et sous-ensemble ; pas de Google Fonts, pour le hors-ligne).
 - Supabase : tables et règles d'accès dans [supabase/schema.sql](supabase/schema.sql) (à coller dans le SQL Editor) ; une base créée avant l'agenda reçoit [supabase/2026-11-agenda.sql](supabase/2026-11-agenda.sql), à coller **avant** de mettre en ligne la version avec l'agenda. Un compte = les données d'un salon ; inscriptions fermées, comptes créés à la main dans le tableau de bord. Plan gratuit : pas de sauvegarde automatique de la base, pause après 7 jours sans activité.
 - En ligne : GitHub Pages, publié par `.github/workflows/pages.yml` à chaque push sur `main`. Chaque push arrive directement sur la tablette du coiffeur : tester avant.
@@ -33,7 +35,7 @@ Salon en Nouvelle-Calédonie : téléphones à 6 chiffres, affichés `98.62.13` 
 - Révisions design : `/impeccable critique` (rapports dans [.impeccable/critique/](.impeccable/critique/)) ou `/ui-ux-pro-max`.
 
 ## Design « Élégance »
-Bleu nuit `#161D33`, or rose `#E3B59C`, Cormorant Garamond (titres) + Manrope (texte). Couleurs et durées d'animation (`--t-press`, `--t-dialog`) en variables CSS dans `styles.css`, aucune en dur.
+Bleu nuit `#161D33`, or rose `#E3B59C`, Cormorant Garamond (titres) + Manrope (texte). Couleurs et durées d'animation (`--t-press`, `--t-dialog`, `--t-flash`) en variables CSS dans `styles.css`, aucune en dur.
 - Retour au toucher sur tout élément tactile (`:active` + transition courte), sans changer la mise en page.
 - Un seul bouton or plein par écran (l'action principale).
 - Le bordeaux et le triangle d'alerte sont réservés à l'allergie ; erreurs et actions destructrices en corail `--error` ; « à valider » en or avec horloge ; informations neutres.

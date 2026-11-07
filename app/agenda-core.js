@@ -70,14 +70,36 @@ export function prefillDuration(services, previous) {
   return match ? { duration: match.duration, from: match.start } : { duration: standardDuration(services), from: null };
 }
 
+// Le chevauchement passe avant la fermeture : c'est le rendez-vous suivant qui gêne le plus souvent.
 export function checkSlot(candidate, list) {
   const start = new Date(candidate.start);
   const end = endOf(candidate);
-  if ((end - midnight(start)) / MIN_MS > CLOSE_MIN) return { reason: 'close' };
   const other = list
     .filter((a) => a.id !== candidate.id && new Date(a.start) < end && endOf(a) > start)
     .sort(byStart)[0];
-  return other ? { reason: 'overlap', other } : null;
+  if (other) return { reason: 'overlap', other };
+  if ((end - midnight(start)) / MIN_MS > CLOSE_MIN) return { reason: 'close' };
+  return null;
+}
+
+// Jusqu'où le créneau est libre (minutes depuis minuit) : début du rendez-vous suivant du même jour,
+// sinon la fermeture. `inside` : le début tombe déjà dans un rendez-vous (`next`).
+export function freeUntil(candidate, list) {
+  const start = new Date(candidate.start);
+  const s = minutesOf(start);
+  let until = CLOSE_MIN;
+  let next = null;
+  for (const a of [...list].sort(byStart)) {
+    const as = new Date(a.start);
+    if (a.id === candidate.id || as.toDateString() !== start.toDateString()) continue;
+    const am = minutesOf(as);
+    if (am <= s && am + a.duration > s) return { until: s, next: a, inside: true };
+    if (am > s && am < until) {
+      until = am;
+      next = a;
+    }
+  }
+  return { until, next, inside: false };
 }
 
 export function nextOfDay(list, now) {

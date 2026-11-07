@@ -15,6 +15,7 @@ import {
   standardDuration,
   prefillDuration,
   checkSlot,
+  freeUntil,
   nextOfDay,
   lanes,
   lastColor,
@@ -119,6 +120,26 @@ test('checkSlot : fin après 18 h refusée', () => {
 
 test('checkSlot : ignore le rendez-vous lui-même', () => {
   assert.equal(checkSlot({ id: 'x', start: iso(9, 14), duration: 60 }, [appt('x', iso(9, 14), 30)]), null);
+});
+
+test('checkSlot : le rendez-vous chevauché passe avant la fermeture', () => {
+  const teva = appt('t', iso(9, 16, 45), 30);
+  assert.deepEqual(checkSlot({ start: iso(9, 16, 30), duration: 120 }, [teva]), { reason: 'overlap', other: teva });
+});
+
+test('freeUntil : jusqu’au rendez-vous suivant du jour, sinon la fermeture', () => {
+  const teva = appt('t', iso(9, 16, 45), 30);
+  const lea = appt('l', iso(9, 10), 45);
+  const demain = appt('d', iso(10, 9), 30);
+  assert.deepEqual(freeUntil({ start: iso(9, 16, 30) }, [lea, teva, demain]), { until: 16 * 60 + 45, next: teva, inside: false });
+  assert.deepEqual(freeUntil({ start: iso(9, 17, 15) }, [lea, teva, demain]), { until: CLOSE_MIN, next: null, inside: false });
+  assert.deepEqual(freeUntil({ start: iso(9, 8, 30) }, [teva, lea]), { until: 10 * 60, next: lea, inside: false });
+});
+
+test('freeUntil : début déjà pris, et rendez-vous lui-même ignoré', () => {
+  const lea = appt('l', iso(9, 10), 45);
+  assert.deepEqual(freeUntil({ start: iso(9, 10, 30) }, [lea]), { until: 10 * 60 + 30, next: lea, inside: true });
+  assert.deepEqual(freeUntil({ id: 'l', start: iso(9, 10) }, [lea]), { until: CLOSE_MIN, next: null, inside: false });
 });
 
 test('nextOfDay : le premier pas terminé', () => {
