@@ -207,8 +207,8 @@ const ICONS = {
 const icon = (name, size = 20) =>
   `<svg class="ic" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
 
-const logo = (size = 'sm') =>
-  `<div class="logo logo-${size}" aria-label="H&amp;B Salon" role="img"><span class="logo-hb">H&amp;B</span><span class="logo-salon">SALON</span></div>`;
+// Le vrai logo du salon (détouré, reflets compris).
+const logo = (size = 'sm') => `<img class="logo logo-${size}" src="logo.webp" alt="H&amp;B Salon" width="854" height="502">`;
 
 // Champ de formulaire avec emplacement pour son message d'erreur.
 const inputField = (cls, name, label, type, value, extra = '') =>

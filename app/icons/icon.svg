@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="#161D33"/>
-  <ellipse cx="256" cy="256" rx="176" ry="104" fill="none" stroke="#E3B59C" stroke-width="7"/>
-  <text x="256" y="276" text-anchor="middle" font-family="'Cormorant Garamond', Georgia, serif" font-weight="600" font-size="108" fill="#E3B59C">H&amp;B</text>
-  <text x="256" y="322" text-anchor="middle" font-family="Manrope, Arial, sans-serif" font-size="22" letter-spacing="12" fill="#E3B59C">SALON</text>
-</svg>
