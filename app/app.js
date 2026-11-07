@@ -864,6 +864,10 @@ const whenOf = (v) => (isToday(v.date) ? `de ${fmtTime(v.date)}` : `du ${fmtDayS
 
 const consentLine = (c) => (c.consentAt ? `Accord RGPD donné le ${fmtDayShort(c.consentAt)}` : '');
 
+// Bandeau du coiffeur après un refus RGPD.
+const keptText = (n) =>
+  !n ? '' : n > 1 ? ` Ses ${n} rendez-vous à venir sont gardés sur la tablette.` : ' Son rendez-vous à venir est gardé sur la tablette.';
+
 function lastColorLine() {
   const lc = core.lastColor(S.history, new Date());
   return lc ? `<p class="last-color">Dernière couleur ${core.agoText(lc.days)} (${fmtDayShort(lc.date)})</p>` : '';
@@ -1219,6 +1223,7 @@ function viewModal() {
       <div class="dialog dialog-sm">
         <h2 class="serif" id="dlg-title">Ne pas conserver votre fiche ?</h2>
         <p class="muted">Sans votre accord, le salon efface ${lost}. Si vous préférez qu’il la garde, revenez cocher la case.</p>
+        ${m.upcoming ? '<p class="muted">Vos prochains rendez-vous restent notés.</p>' : ''}
         <div class="choice-pair">
           <button type="button" class="btn btn-ghost btn-lg" data-action="back-to-consent" data-autofocus>Revenir à la case</button>
           <button type="button" class="btn btn-danger-outline btn-lg" data-action="confirm-no-consent">Ne pas conserver</button>
@@ -1870,12 +1875,13 @@ const actions = {
   },
   'confirm-no-consent': async () => {
     const client = await db.getClient(S.handedVisit.clientId);
+    const kept = await db.detachAppointments(client.id, new Date().toISOString()); // rendez-vous à venir gardés sur la tablette
     await db.deleteClient(client.id);
     dropDraft(S.drafts.get(client.id)?.draft);
     S.drafts.delete(client.id);
     dropNotices((n) => n.clientId === client.id);
     const who = hasName(client) ? `de ${fullName(client)}` : `créée le ${fmtDayShort(client.createdAt)}${client.phone ? ` (${fmtPhone(client.phone)})` : ''}`;
-    addNotice({ text: `Fiche ${who} effacée : le client n’a pas donné son accord.` });
+    addNotice({ text: `Fiche ${who} effacée : le client n’a pas donné son accord.${keptText(kept)}` });
     finishCheckout(S.checkout.firstName.trim(), 'Votre fiche n’a pas été conservée.');
   },
   'client-to-coiffeur': () => askPin(enterCoiffeur, () => go('client')),
@@ -2030,7 +2036,9 @@ app.addEventListener('submit', async (e) => {
     if (!data.consent) {
       showErrors(form, {});
       const visits = (await db.visitsOf(S.handedVisit.clientId)).length;
-      openModal({ type: 'no-consent', visits });
+      const nowIso = new Date().toISOString();
+      const upcoming = (await db.appointmentsOf(S.handedVisit.clientId)).filter((a) => a.start >= nowIso).length;
+      openModal({ type: 'no-consent', visits, upcoming });
       return;
     }
     if (showErrors(form, validateContact(val, true))) return;
