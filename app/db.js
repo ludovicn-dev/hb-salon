@@ -2,7 +2,7 @@
 // puis sync.js envoie à Supabase les enregistrements marqués `dirty` et les effacements.
 
 const DB_NAME = 'hb-salon';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const SYNCED = ['clients', 'visits', 'photos'];
 
 let dbPromise;
@@ -47,6 +47,13 @@ function open() {
             cur.continue();
           };
         }
+      }
+      // v3 : agenda. Les rendez-vous ont leur propre magasin (ils survivent à l'effacement de la fiche).
+      if (e.oldVersion < 3) {
+        const appts = db.createObjectStore('appointments', { keyPath: 'id' });
+        appts.createIndex('dirty', 'dirty');
+        appts.createIndex('clientId', 'clientId');
+        appts.createIndex('start', 'start');
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -126,15 +133,21 @@ export async function saveClient(client) {
 
 // Efface la fiche, ses visites et leurs photos (client sans accord RGPD).
 // `tombstone` : garder trace de l'effacement pour le répercuter en ligne (faux quand il vient d'en ligne).
+// Ses rendez-vous partent aussi : appeler detachAppointments avant pour garder ceux à venir.
 export async function deleteClient(id, tombstone = true) {
   const db = await open();
-  const tx = db.transaction(['clients', 'visits', 'photos', 'deletions'], 'readwrite');
+  const tx = db.transaction(['clients', 'visits', 'photos', 'deletions', 'appointments'], 'readwrite');
+  const appts = tx.objectStore('appointments');
   const visits = tx.objectStore('visits');
   const photos = tx.objectStore('photos');
   const dels = tx.objectStore('deletions');
   const mark = (kind, key) => tombstone && dels.put({ id: key, kind, at: now() });
   tx.objectStore('clients').delete(id);
   mark('client', id);
+  for (const key of await promisify(appts.index('clientId').getAllKeys(id))) {
+    appts.delete(key);
+    mark('appointment', key);
+  }
   const visitIds = await promisify(visits.index('clientId').getAllKeys(id));
   for (const visitId of visitIds) {
     visits.delete(visitId);
@@ -230,6 +243,79 @@ export async function deletePhoto(id, tombstone = true) {
   if (tombstone) tx.objectStore('deletions').put({ id, kind: 'photo', at: now() });
   await done(tx);
   if (tombstone) changed();
+}
+
+// --- Rendez-vous ---
+// La copie du prénom et du téléphone sert quand la fiche n'existe plus.
+
+export async function saveAppointment(appt) {
+  const record = {
+    clientId: null,
+    firstName: '',
+    phone: '',
+    services: [],
+    createdAt: now(),
+    ...appt,
+    id: appt.id || uid(),
+    updatedAt: now(),
+    syncedAt: null,
+    dirty: 1
+  };
+  await promisify((await store('appointments', 'readwrite')).put(record));
+  changed();
+  return record;
+}
+
+export async function getAppointment(id) {
+  return promisify((await store('appointments')).get(id));
+}
+
+export async function allAppointments() {
+  return promisify((await store('appointments')).getAll());
+}
+
+// Rendez-vous qui commencent dans [fromIso, toIso[, par heure de début.
+export async function appointmentsBetween(fromIso, toIso) {
+  const s = await store('appointments');
+  return promisify(s.index('start').getAll(IDBKeyRange.bound(fromIso, toIso, false, true)));
+}
+
+export async function appointmentsOf(clientId) {
+  return promisify((await store('appointments')).index('clientId').getAll(clientId));
+}
+
+export async function deleteAppointment(id, tombstone = true) {
+  const db = await open();
+  const tx = db.transaction(['appointments', 'deletions'], 'readwrite');
+  tx.objectStore('appointments').delete(id);
+  if (tombstone) tx.objectStore('deletions').put({ id, kind: 'appointment', at: now() });
+  await done(tx);
+  if (tombstone) changed();
+}
+
+// Client qui refuse l'accord RGPD : ses rendez-vous passés sont effacés, ceux à venir restent
+// sur la tablette seulement (jamais envoyés ; effacés en ligne s'ils y étaient déjà).
+// Retourne le nombre de rendez-vous gardés.
+export async function detachAppointments(clientId, nowIso) {
+  const db = await open();
+  const tx = db.transaction(['appointments', 'deletions'], 'readwrite');
+  const appts = tx.objectStore('appointments');
+  const dels = tx.objectStore('deletions');
+  let kept = 0;
+  for (const a of await promisify(appts.index('clientId').getAll(clientId))) {
+    if (a.start < nowIso) {
+      appts.delete(a.id);
+      dels.put({ id: a.id, kind: 'appointment', at: now() });
+      continue;
+    }
+    if (a.syncedAt) dels.put({ id: a.id, kind: 'appointment', at: now() });
+    const { dirty, ...rest } = a;
+    appts.put({ ...rest, clientId: null, localOnly: 1 });
+    kept++;
+  }
+  await done(tx);
+  changed();
+  return kept;
 }
 
 // --- Synchro (utilisé par sync.js) ---
