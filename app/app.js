@@ -724,7 +724,10 @@ function viewAgenda() {
   }
   return `
   <div class="agenda-head">
-    <h1 class="serif">${core.weekLabel(S.week)}</h1>
+    <div>
+      <h1 class="serif">${core.weekLabel(S.week)}</h1>
+      <p class="muted">Touchez un créneau libre pour noter un rendez-vous.</p>
+    </div>
     <div class="week-nav">
       <button type="button" class="btn btn-ghost btn-icon" data-action="week-prev" aria-label="Semaine précédente">${icon('left', 20)}</button>
       <button type="button" class="btn btn-ghost" data-action="week-now"${current ? ' disabled' : ''}>Cette semaine</button>
