@@ -321,6 +321,7 @@ const SCROLLERS = ['.detail', '.results', '.coiffeur-body', '.client', '.client-
 // Redessine l'écran en gardant la position de défilement et le focus (sauf changement d'écran).
 function render({ top = false, focus = null } = {}) {
   const same = app.dataset.view === S.view;
+  const fromBoot = !app.dataset.view; // premier rendu : index.html montrait déjà le logo
   // data-autofocus ne joue qu'à l'arrivée sur un écran ou à l'ouverture d'une fenêtre : redessiner la fenêtre
   // (prestation cochée…) ne doit pas refocaliser le champ, sinon le clavier Android revient masquer l'écran.
   const arriving = !same || (S.modal?.type || '') !== (app.dataset.modal || '');
@@ -340,7 +341,7 @@ function render({ top = false, focus = null } = {}) {
   if (S.modal && S.modal.type !== app.dataset.modal) app.querySelector(':scope > .overlay')?.classList.add('enter');
   app.dataset.modal = S.modal?.type || '';
   // Bienvenue / Merci : apparition lente à l'arrivée seulement, pas quand l'écran est redessiné (sauvegarde…).
-  if (!same) app.querySelector(':scope > .welcome')?.classList.add('enter');
+  if (!same) app.querySelector(':scope > .welcome')?.classList.add('enter', ...(fromBoot ? ['boot'] : []));
   if (S.refused) app.querySelector(S.refused)?.classList.add('refuse');
   if (S.view === 'coiffeur' || S.view === 'client') saveDraftsSoon();
 
@@ -2486,10 +2487,32 @@ app.addEventListener('focusout', (e) => {
     S.modal.query = el.value;
     return;
   }
-  if (el.type !== 'tel' || fmtPhone(el.value) === el.value) return;
-  el.value = fmtPhone(el.value);
-  bindCheckout(el);
+  if (el.type === 'tel' && fmtPhone(el.value) !== el.value) {
+    el.value = fmtPhone(el.value);
+    bindCheckout(el);
+  }
+  checkFieldOnLeave(el);
 });
+
+// Téléphone ou e-mail mal formé : l'erreur apparaît sous le champ dès qu'on le quitte, sans attendre
+// « Valider ». Un champ vide n'est pas repris ici (le caractère obligatoire se dit à la validation).
+function checkFieldOnLeave(el) {
+  const form = el.form;
+  if (!form || !['phone', 'email'].includes(el.name) || !['checkout', 'client'].includes(form.dataset.form) || !el.value.trim()) return;
+  const data = Object.fromEntries(new FormData(form));
+  const val = (k) => String(data[k] ?? '').trim();
+  const message = validateContact(val, false, form.dataset.form === 'checkout')[el.name];
+  const slot = form.querySelector(`#err-${el.name}`);
+  if (!message) {
+    el.removeAttribute('aria-invalid');
+    if (slot) slot.textContent = '';
+    return;
+  }
+  const fresh = slot && slot.textContent !== message;
+  el.setAttribute('aria-invalid', 'true');
+  if (slot) slot.textContent = message;
+  if (fresh) announce(message);
+}
 
 app.addEventListener('input', (e) => {
   const el = e.target;
@@ -2599,13 +2622,18 @@ app.addEventListener('submit', async (e) => {
     if (showErrors(form, errors)) return;
     const btn = form.querySelector('[type="submit"]');
     const msg = form.querySelector('#login-err');
+    // Le bouton dit qu'il travaille : la connexion peut prendre quelques secondes sur le réseau du salon.
     btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
+    btn.textContent = 'Connexion…';
     msg.textContent = '';
     try {
       await sync.signIn(val('email'), data.password);
       toast('Sauvegarde en ligne activée');
     } catch (err) {
       btn.disabled = false;
+      btn.removeAttribute('aria-busy');
+      btn.textContent = 'Se connecter';
       msg.textContent = loginError(err);
       form.elements.password.select();
     }

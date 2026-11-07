@@ -1,7 +1,7 @@
 // Hors-ligne : l'appli est servie depuis le cache, puis mise à jour en arrière-plan.
 // Changer CACHE à chaque nouvelle version pour forcer la mise à jour sur la tablette.
 
-const CACHE = 'hb-salon-v14';
+const CACHE = 'hb-salon-v15';
 const FONTS = ['cormorant', 'manrope'].flatMap((f) => [
   `fonts/${f}-latin.woff2`,
   `fonts/${f}-latin-ext.woff2`

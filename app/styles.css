@@ -24,6 +24,11 @@
   --t-dialog: 220ms; /* arrivée d'une fenêtre */
   --t-flash: 1800ms; /* rendez-vous qui vient d'être noté ou déplacé */
   --t-arrive: 900ms; /* apparition lente de Bienvenue et Merci */
+  --t-screen: 500ms; /* arrivée de l'écran client */
+  --t-toast: 300ms; /* montée d'un toast */
+  --t-fade: 200ms; /* simple fondu (toast, mouvement réduit) */
+  --safe-bottom: env(safe-area-inset-bottom, 0px); /* barre de gestes Android, le cas échéant */
+  --safe-top: env(safe-area-inset-top, 0px);
   --halo: color-mix(in srgb, var(--panel-2) 60%, var(--bg)); /* lumière douce derrière le logo */
   --glow: color-mix(in srgb, var(--panel) 70%, var(--bg)); /* haut de la colonne du logo, écran client */
   /* Anneau de focus ivoire : l'or rose marque déjà ce qui est coché ou choisi. */
@@ -197,8 +202,11 @@ h2.label { font-weight: 400; }
 }
 .thanks-text { display: flex; flex-direction: column; gap: 14px; }
 .thanks-text p { font-size: 18px; }
-.corner { position: absolute; right: 24px; bottom: 24px; color: var(--muted); }
-.corner-left { position: absolute; left: 24px; bottom: 34px; display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.corner { position: absolute; right: 24px; bottom: calc(24px + var(--safe-bottom)); color: var(--muted); }
+.corner-left { position: absolute; left: 24px; bottom: calc(34px + var(--safe-bottom)); display: flex; align-items: center; gap: 8px; font-size: 14px; }
+/* Au lancement, index.html montre déjà le logo : seul le titre apparaît en fondu. */
+.welcome.enter.boot > .logo { animation: none; }
+.welcome .ghost { visibility: hidden; }
 
 /* ---------- PIN ---------- */
 
@@ -294,7 +302,8 @@ h2.label { font-weight: 400; }
   background: var(--panel);
 }
 .result:active { background: var(--panel-2); border-color: var(--line-2); }
-.result.active { background: var(--panel-2); border: 1.5px solid var(--accent); }
+/* Choisi : le bord garde 1 px (le texte ne bouge pas), l'anneau or vient d'une ombre interne. */
+.result.active { background: var(--panel-2); border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .result-name { font-size: 17px; font-weight: 600; }
 .result-sub { font-size: 14px; color: var(--muted); }
 .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
@@ -411,7 +420,7 @@ h2.label { font-weight: 400; }
 .allergy-mini strong { margin-right: 8px; }
 .allergy-mini span { font-size: 15px; }
 
-.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
+.tabs { display: flex; gap: 8px; border-bottom: 1px solid var(--line); }
 .tabs button {
   background: none;
   border: none;
@@ -446,7 +455,7 @@ h2.label { font-weight: 400; }
 .service .ic { display: none; color: var(--accent); }
 /* Coché : contour et coche or rose, sans aplat, pour laisser le bouton principal seul en or plein. */
 .service:active { background: var(--panel-2); }
-.service[aria-pressed='true'] { background: var(--panel-2); border: 1.5px solid var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.service[aria-pressed='true'] { background: var(--panel-2); border-color: var(--accent); box-shadow: inset 0 0 0 1.5px var(--accent); }
 .service[aria-pressed='true'] .ic { display: block; }
 
 .edit-banner {
@@ -567,10 +576,10 @@ button.photo:active { border-color: var(--accent); }
 
 /* ---------- Écran client ---------- */
 
-.client { height: 100%; display: flex; overflow: hidden; animation: arrive 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
+.client { height: 100%; display: flex; overflow: hidden; animation: arrive var(--t-screen) var(--ease-out); }
 @keyframes arrive { from { opacity: 0; transform: translateY(12px); } }
 @media (prefers-reduced-motion: reduce) {
-  .client { animation-duration: 0.2s; }
+  .client { animation-duration: var(--t-fade); }
   @keyframes arrive { from { opacity: 0; } }
 }
 .aside-foot { margin-top: auto; min-height: 44px; font-size: 14px; }
@@ -638,7 +647,7 @@ button.photo:active { border-color: var(--accent); }
   /* En bas de la colonne de gauche : ne cache ni la barre du haut, ni la fiche, ni le bouton principal. */
   position: fixed;
   left: 20px;
-  bottom: 96px;
+  bottom: calc(96px + var(--safe-bottom));
   max-width: min(300px, calc(100% - 40px));
   transform: translateY(16px);
   padding: 14px 22px;
@@ -649,20 +658,22 @@ button.photo:active { border-color: var(--accent); }
   box-shadow: 0 8px 24px var(--scrim);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.2s, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity var(--t-fade), transform var(--t-toast) var(--ease-out);
   z-index: 20;
 }
 .toast.on { opacity: 1; transform: none; }
-#app[data-modal]:not([data-modal='']) ~ .toast { left: 50%; bottom: 32px; max-width: min(420px, calc(100% - 40px)); transform: translate(-50%, 16px); }
+#app[data-modal]:not([data-modal='']) ~ .toast { left: 50%; bottom: calc(32px + var(--safe-bottom)); max-width: min(420px, calc(100% - 40px)); transform: translate(-50%, 16px); }
 #app[data-modal]:not([data-modal='']) ~ .toast.on { transform: translate(-50%, 0); }
 @media (prefers-reduced-motion: reduce) {
-  .toast { transform: none; transition: opacity 0.2s; }
+  .toast { transform: none; transition: opacity var(--t-fade); }
 }
 
+/* En haut de l'écran client : il ne recouvre ni « Valider » ni « Coiffeur », qui sont en bas,
+   et reste visible quand le clavier Android occupe la moitié basse. */
 .idle-warn {
   position: fixed;
   left: 50%;
-  bottom: 24px;
+  top: calc(20px + var(--safe-top));
   transform: translateX(-50%);
   width: min(560px, calc(100% - 32px));
   display: flex;
@@ -737,7 +748,7 @@ button.photo:active { border-color: var(--accent); }
 .sync-account strong { font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
 /* « non activée » sous le mot, en petit : la barre du haut garde la place de la date. */
 .backup-text { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.2; }
-.backup-off { color: var(--muted); font-size: 12px; font-weight: 500; }
+.backup-off { color: var(--muted); font-size: 13px; font-weight: 500; }
 .backup-wait { color: var(--accent); }
 .backup-error { color: var(--error); }
 .lightbox { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
@@ -974,7 +985,7 @@ button.photo:active { border-color: var(--accent); }
 }
 .appt-who .chip small { font-size: 13px; font-weight: 500; color: var(--muted); }
 .appt-who .chip:active { background: var(--panel-2); }
-.appt-who .chip[aria-checked='true'] { background: var(--panel-2); border: 1.5px solid var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.appt-who .chip[aria-checked='true'] { background: var(--panel-2); border-color: var(--accent); box-shadow: inset 0 0 0 1.5px var(--accent); }
 .appt-who .chip-add { flex-direction: row; align-items: center; gap: 6px; border-style: dashed; color: var(--accent); }
 .appt-person { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 19px; }
 .appt-person .appt-open { margin-left: auto; }
@@ -1004,7 +1015,7 @@ button.photo:active { border-color: var(--accent); }
 .today-row:active { background: var(--panel-2); }
 .today-row.past { background: transparent; }
 .today-row.past .today-time, .today-row.past .today-who strong { color: var(--muted); }
-.today-row.next { border: 1.5px solid var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.today-row.next { border-color: var(--accent); box-shadow: inset 0 0 0 1.5px var(--accent); }
 .today-time { width: 72px; flex-shrink: 0; font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
 /* L'or seulement pour le rendez-vous en cours ou le prochain : il redevient un signal. */
 .today-row.next .today-time { color: var(--accent); }
