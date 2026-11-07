@@ -572,8 +572,19 @@ async function slotProblem(candidate, isNew) {
   return `Chevauche le rendez-vous de ${apptName(pb.other)} à ${fmtTime(pb.other.start)}.`;
 }
 
+// Un second appui pendant l'enregistrement est ignoré (sinon deux fiches et deux rendez-vous).
 async function saveApptForm() {
   const m = S.modal;
+  if (m.saving) return;
+  m.saving = true;
+  try {
+    await saveAppt(m);
+  } finally {
+    m.saving = false;
+  }
+}
+
+async function saveAppt(m) {
   const a = m.id ? findAppt(m.id) : null;
   const fail = (msg) => {
     m.error = msg;

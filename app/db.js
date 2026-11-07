@@ -144,9 +144,10 @@ export async function deleteClient(id, tombstone = true) {
   const mark = (kind, key) => tombstone && dels.put({ id: key, kind, at: now() });
   tx.objectStore('clients').delete(id);
   mark('client', id);
-  for (const key of await promisify(appts.index('clientId').getAllKeys(id))) {
-    appts.delete(key);
-    mark('appointment', key);
+  // Un rendez-vous jamais envoyé n'a rien à effacer en ligne.
+  for (const a of await promisify(appts.index('clientId').getAll(id))) {
+    appts.delete(a.id);
+    if (a.syncedAt) mark('appointment', a.id);
   }
   const visitIds = await promisify(visits.index('clientId').getAllKeys(id));
   for (const visitId of visitIds) {
@@ -287,8 +288,11 @@ export async function appointmentsOf(clientId) {
 export async function deleteAppointment(id, tombstone = true) {
   const db = await open();
   const tx = db.transaction(['appointments', 'deletions'], 'readwrite');
-  tx.objectStore('appointments').delete(id);
-  if (tombstone) tx.objectStore('deletions').put({ id, kind: 'appointment', at: now() });
+  const appts = tx.objectStore('appointments');
+  const cur = await promisify(appts.get(id));
+  appts.delete(id);
+  // Un rendez-vous jamais envoyé n'a rien à effacer en ligne.
+  if (tombstone && cur?.syncedAt) tx.objectStore('deletions').put({ id, kind: 'appointment', at: now() });
   await done(tx);
   if (tombstone) changed();
 }
@@ -305,7 +309,7 @@ export async function detachAppointments(clientId, nowIso) {
   for (const a of await promisify(appts.index('clientId').getAll(clientId))) {
     if (a.start < nowIso) {
       appts.delete(a.id);
-      dels.put({ id: a.id, kind: 'appointment', at: now() });
+      if (a.syncedAt) dels.put({ id: a.id, kind: 'appointment', at: now() });
       continue;
     }
     if (a.syncedAt) dels.put({ id: a.id, kind: 'appointment', at: now() });

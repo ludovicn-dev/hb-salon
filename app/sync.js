@@ -244,11 +244,16 @@ async function push() {
   // Effacements d'abord : une fiche sans accord doit disparaître d'en ligne au plus vite.
   const dels = await db.pendingDeletions();
   if (dels.length) {
-    await rest('deletions', '?on_conflict=id', {
-      method: 'POST',
-      body: dels.map((d) => ({ id: d.id, kind: d.kind, deleted_at: d.at })),
-      headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }
-    });
+    // Les rendez-vous dans un lot à part : une base pas encore passée à l'agenda refuse ce type,
+    // et l'effacement d'une fiche sans accord ne doit pas attendre derrière.
+    const mark = (list) =>
+      list.length &&
+      rest('deletions', '?on_conflict=id', {
+        method: 'POST',
+        body: list.map((d) => ({ id: d.id, kind: d.kind, deleted_at: d.at })),
+        headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }
+      });
+    await mark(dels.filter((d) => d.kind !== 'appointment'));
     const photos = dels.filter((d) => d.kind === 'photo');
     if (photos.length) {
       await api('/storage/v1/object/photos', {
@@ -256,13 +261,19 @@ async function push() {
         body: { prefixes: photos.flatMap((d) => [photoPath(d.id), photoPath(d.id, true)]) }
       });
     }
-    for (const kind of ['appointment', 'photo', 'visit', 'client']) {
+    const removeRows = async (kind) => {
       const ids = dels.filter((d) => d.kind === kind).map((d) => d.id);
       for (let i = 0; i < ids.length; i += 100) {
         await rest(`${kind}s`, `?id=in.(${ids.slice(i, i + 100).join(',')})`, { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
       }
-    }
-    for (const d of dels) await db.clearDeletion(d.id);
+    };
+    for (const kind of ['photo', 'visit', 'client']) await removeRows(kind);
+    for (const d of dels.filter((x) => x.kind !== 'appointment')) await db.clearDeletion(d.id);
+    // Rendez-vous ensuite (l'effacement en cascade d'une fiche a déjà pu les retirer).
+    const apptDels = dels.filter((d) => d.kind === 'appointment');
+    await mark(apptDels);
+    await removeRows('appointment');
+    for (const d of apptDels) await db.clearDeletion(d.id);
   }
 
   await pushRecords('clients', (await db.dirty('clients')).filter((c) => ok.has(c.id)));
