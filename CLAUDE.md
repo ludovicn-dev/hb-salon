@@ -7,7 +7,7 @@ Salon en Nouvelle-Calédonie : téléphones à 6 chiffres affichés `98.62.13` (
 PWA en JavaScript simple, sans framework ni étape de build, tout dans [app/](app/) :
 - `app.js` : écrans et logique, rendu par chaînes HTML et actions `data-action` ; tout l'état est dans `S`.
   - `render()` garde le défilement et le focus (`render({ focus: '<sélecteur>' })` pour viser un élément). Fenêtres dans `S.modal` : le fondu et `data-autofocus` ne jouent qu'à l'ouverture, sinon le clavier Android revient masquer la fenêtre.
-  - Brouillons de visite par client dans `S.drafts` (mémoire seulement) : `parkDraft()` avant de changer de client ou de passer la tablette.
+  - Brouillons de visite par client dans `S.drafts` : `parkDraft()` avant de changer de client ou de passer la tablette. Recopiés (photos comprises) dans le réglage local `drafts` (`saveDraftsSoon`), retrouvés si Android ferme l'appli, oubliés le lendemain ; un client supprimé sort aussi de `S.savedDrafts`.
   - Messages : bandeaux du coiffeur (`addNotice` / `dropNotices` ; ceux d'une visite disparaissent quand elle est validée ou effacée), lecteur d'écran (`announce`), `toast`. L'agenda répond sous le titre de la semaine (`agendaNote`), jamais en toast, avec « Remettre comme avant » / « Rétablir » (`undoAgenda`).
   - Après toute écriture de rendez-vous : `refreshAppts()`. Un rendez-vous rétabli reprend un nouvel identifiant (l'effacement de l'ancien est peut-être déjà parti en ligne).
   - Code oublié : code de déblocage à 8 chiffres connu du seul installateur. app.js étant public, seule son empreinte PBKDF2 y figure ; ne jamais revenir à un simple SHA-256.

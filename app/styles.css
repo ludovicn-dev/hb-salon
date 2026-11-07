@@ -301,6 +301,11 @@ h2.label { font-weight: 400; }
 .tag { font-size: 13px; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: var(--panel-2); color: var(--text-2); }
 /* « À valider » : une action à faire, pas une alerte ; or rose, l'allergie garde seule le bordeaux. */
 .tag-pending { display: inline-flex; align-items: center; gap: 4px; background: transparent; border: 1px solid var(--accent); color: var(--accent); }
+/* Information neutre : la fiche n'a pas encore l'accord du client. */
+.tag-consent { display: inline-block; vertical-align: 1px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); white-space: nowrap; }
+.client-meta .tag-consent { margin-left: 4px; }
+.foot-note { flex: 0 1 380px; color: var(--text-2); font-size: 14px; line-height: 1.4; text-align: right; }
+.draft-foot > .btn-lg { flex-shrink: 0; }
 .result.unnamed .result-name { font-style: italic; font-weight: 500; color: var(--text-2); }
 
 .btn-new {
@@ -335,6 +340,12 @@ h2.label { font-weight: 400; }
 
 .empty { margin: auto; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 14px; padding-bottom: 60px; }
 .empty h1 { font-size: 44px; }
+/* Retour de la tablette après une validation : la boucle se referme à l'accueil, sans toast fugace. */
+.done-line { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border: 1px solid var(--line-2); border-radius: 12px; color: var(--text-2); font-size: 16px; }
+.done-line .ic { flex-shrink: 0; color: var(--accent); }
+.done-line strong { color: var(--text); font-weight: 600; }
+.empty .done-line { margin-bottom: 18px; }
+.today-list .done-line { align-self: flex-start; margin-bottom: 10px; }
 
 .client-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
 .client-head h1 { font-size: clamp(30px, 3.2vw, 38px); line-height: 1.1; }
@@ -528,6 +539,13 @@ button.photo:active { border-color: var(--accent); }
   background: linear-gradient(to bottom, transparent, var(--bg) 30%);
 }
 /* Clavier ouvert en paysage : l'écran ne fait plus que ~400 px, le bouton reprend sa place en fin de fiche. */
+/* Rappel de l'allergie près de la formule : seulement quand l'encadré du haut peut être hors de vue
+   (clavier ouvert en paysage, formule loin sous l'en-tête en portrait) ; sinon l'alerte la plus grave
+   de la fiche se lirait deux fois. */
+.allergy-formula { display: none; }
+@media (max-height: 520px), (orientation: portrait) {
+  .allergy-formula { display: flex; }
+}
 @media (max-height: 520px) {
   .draft-foot { position: static; background: none; }
   .detail { scroll-padding-bottom: 16px; }
@@ -794,15 +812,20 @@ button.photo:active { border-color: var(--accent); }
 
 .agenda { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; padding: 16px 24px 20px; overflow-y: auto; }
 .agenda-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-.agenda-title { min-width: 0; }
+/* La largeur du titre ne dépend pas du message : un nom long ne fait plus passer la navigation à la ligne. */
+.agenda-title { flex: 1 1 280px; min-width: 0; }
 .agenda-head h1 { font-size: 32px; font-variant-numeric: lining-nums; }
 /* Consigne, déplacement en cours ou dernier message : toujours sur une ligne de même hauteur, la grille ne bouge pas. */
 .agenda-line { display: flex; align-items: center; gap: 6px; min-height: 20px; margin-top: 2px; font-size: 14px; }
+.agenda-line > span, .agenda-line.is-error { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agenda-line .ic { flex-shrink: 0; }
 .agenda-line.is-move { color: var(--accent); }
 .agenda-line.is-error { color: var(--error); font-weight: 600; }
 .agenda-line.is-note { color: var(--text-2); }
 .agenda-line.is-note .ic { color: var(--accent); }
-.week-nav { display: flex; gap: 8px; }
+.week-nav { display: flex; align-items: center; gap: 8px; }
+/* Semaine de travail affichée : une position, pas un bouton (même place, sans bord). */
+.week-here { display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; color: var(--accent); font-weight: 600; white-space: nowrap; }
 .btn-icon { width: 48px; padding: 0; }
 
 .week { flex: 1; min-height: 480px; display: flex; flex-direction: column; gap: 6px; }
@@ -812,7 +835,7 @@ button.photo:active { border-color: var(--accent); }
 .day-head.is-today, .day-head.is-today strong { color: var(--accent); font-weight: 700; }
 .week-body { flex: 1; }
 .hours { position: relative; }
-.hour { position: absolute; right: 6px; transform: translateY(-50%); font-size: 12px; color: var(--muted); white-space: nowrap; }
+.hour { position: absolute; right: 6px; transform: translateY(-50%); font-size: 13px; color: var(--muted); white-space: nowrap; }
 .hour.first { transform: none; }
 .hour.last { transform: translateY(-100%); }
 
@@ -881,12 +904,28 @@ button.photo:active { border-color: var(--accent); }
   to { outline: 3px solid transparent; outline-offset: 2px; }
 }
 .appt-name { display: flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0; font-weight: 700; }
-.appt-n { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Heure en tête, plus discrète que le prénom ; la prestation suit le prénom et s'efface la première. */
+.appt-time { flex-shrink: 0; font-weight: 600; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.appt-block.past .appt-time { color: var(--muted); }
+.appt-n { flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.appt-svc { flex: 1 1 0; min-width: 0; font-weight: 500; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.appt-svc::before { content: '· '; }
+.appt-block.past .appt-svc { color: var(--muted); }
 .appt-name .ic { color: var(--error); }
 .appt-sub { max-width: 100%; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 @media (max-width: 1000px) {
   .brand-label { display: none; }
+  /* Portrait : la barre du haut tient sur une ligne. L'heure reste (la date est sur l'agenda et
+     sur l'accueil), « Verrouiller » garde son cadenas et son nom pour le lecteur d'écran. */
+  .topbar { padding: 12px 20px; gap: 12px; }
+  .today-date { display: none; }
+  .space-switch { margin-left: 0; }
+  .space-btn { padding: 8px 16px; }
+  .lock-btn { padding-inline: 12px; min-width: 48px; justify-content: center; }
+  .lock-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .draft-foot { flex-wrap: wrap; }
+  .foot-note { flex-basis: 100%; }
   .agenda { padding: 12px 16px 16px; }
   .agenda-head h1 { font-size: 26px; }
   .week-row { grid-template-columns: 40px repeat(6, minmax(0, 1fr)); column-gap: 4px; }
@@ -899,7 +938,13 @@ button.photo:active { border-color: var(--accent); }
 .appt-time-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .appt-done-time { min-width: 0; }
 /* Fin et place libre, sous l'heure ; en corail dès que ça ne tient plus (sans triangle : il est à l'allergie). */
-.appt-span { margin-top: -6px; font-size: 15px; color: var(--text-2); text-align: right; }
+.appt-span { margin: -6px -8px 0 0; padding: 2px 8px; border-radius: 8px; font-size: 15px; color: var(--text-2); text-align: right; }
+/* Enregistrer touché alors que la ligne signale déjà le problème : elle luit dans sa propre couleur. */
+.appt-span.refuse { animation: span-pulse var(--t-flash) var(--ease-out); }
+@keyframes span-pulse {
+  from { background: color-mix(in srgb, currentColor 24%, transparent); }
+  to { background: transparent; }
+}
 .appt-span.over { color: var(--error); font-weight: 600; }
 .appt-span.late { color: var(--accent); font-weight: 600; }
 .stepper { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -929,7 +974,7 @@ button.photo:active { border-color: var(--accent); }
 }
 .appt-who .chip small { font-size: 13px; font-weight: 500; color: var(--muted); }
 .appt-who .chip:active { background: var(--panel-2); }
-.appt-who .chip[aria-pressed='true'] { background: var(--panel-2); border: 1.5px solid var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.appt-who .chip[aria-checked='true'] { background: var(--panel-2); border: 1.5px solid var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .appt-who .chip-add { flex-direction: row; align-items: center; gap: 6px; border-style: dashed; color: var(--accent); }
 .appt-person { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 19px; }
 .appt-person .appt-open { margin-left: auto; }
