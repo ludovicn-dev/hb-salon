@@ -12,16 +12,20 @@ Salon en Nouvelle-Calédonie : téléphones à 6 chiffres, affichés `98.62.13` 
     - Annonces lecteur d'écran : `announce()` (zone `#announce`) et `toast()` (zone `#toast`, hors de `#app`).
     - Fenêtres : `S.modal`, redessinées avec l'écran ; le fondu d'arrivée ne joue que quand le type de fenêtre change (`app.dataset.modal`).
     - PIN oublié : code de déblocage à 8 chiffres connu du seul installateur. app.js étant public, seule son empreinte PBKDF2 y figure (`RECOVERY_SALT`, `RECOVERY_ITER`, `RECOVERY_HASH`) ; ne jamais revenir à un simple SHA-256.
-  - `db.js` : stockage IndexedDB (clients, visites, photos avec miniature `thumb`, réglages dont `pinHash` et `pinLock`). Toute écriture locale pose `dirty: 1` ; les effacements vont dans le magasin `deletions`. Changer la structure = nouvelle `DB_VERSION` avec migration dans `onupgradeneeded`.
-  - `sync.js` : sauvegarde Supabase en REST direct (pas de bibliothèque). Envoie `dirty` + effacements, puis récupère les nouveautés (`synced_at` posé par le serveur). Les clients sans `consentAt` ne partent jamais en ligne. Connexion dans la fenêtre « Sauvegarde ».
+  - `agenda-core.js` : calculs de l'agenda sans écran ni stockage (semaines, créneaux, chevauchements, durées, « dernière couleur »), testés par `node --test "tests/*.test.js"`.
+    - Agenda dans `app.js` : `S.space` (« Fiches » / « Agenda »), `S.week`, `S.weekAppts`, `S.todayAppts`, `S.moving` ; recharger avec `refreshAppts()` après toute écriture de rendez-vous.
+  - `db.js` : stockage IndexedDB (clients, visites, photos avec miniature `thumb`, rendez-vous `appointments`, réglages dont `pinHash` et `pinLock`). Toute écriture locale pose `dirty: 1` ; les effacements vont dans le magasin `deletions`. Changer la structure = nouvelle `DB_VERSION` avec migration dans `onupgradeneeded`.
+  - `sync.js` : sauvegarde Supabase en REST direct (pas de bibliothèque). Envoie `dirty` + effacements, puis récupère les nouveautés (`synced_at` posé par le serveur). Les clients sans `consentAt` ne partent jamais en ligne, ni leurs rendez-vous ; un rendez-vous `localOnly` (gardé après un refus RGPD, via `detachAppointments` appelé avant `deleteClient`) non plus. Connexion dans la fenêtre « Sauvegarde ».
   - `sw.js` : hors-ligne. **Incrémenter `CACHE` à chaque mise en ligne**, sinon la tablette garde l'ancienne version.
+  - `logo.webp` : vrai logo détouré ; icônes de `icons/` générées par `python -I tools/icones.py app/logo.webp app/icons`.
   - `fonts/` : polices variables auto-hébergées (un fichier par famille et sous-ensemble ; pas de Google Fonts, pour le hors-ligne).
-- Supabase : tables et règles d'accès dans [supabase/schema.sql](supabase/schema.sql) (à coller dans le SQL Editor). Un compte = les données d'un salon ; inscriptions fermées, comptes créés à la main dans le tableau de bord. Plan gratuit : pas de sauvegarde automatique de la base, pause après 7 jours sans activité.
+- Supabase : tables et règles d'accès dans [supabase/schema.sql](supabase/schema.sql) (à coller dans le SQL Editor) ; une base créée avant l'agenda reçoit [supabase/2026-11-agenda.sql](supabase/2026-11-agenda.sql), à coller **avant** de mettre en ligne la version avec l'agenda. Un compte = les données d'un salon ; inscriptions fermées, comptes créés à la main dans le tableau de bord. Plan gratuit : pas de sauvegarde automatique de la base, pause après 7 jours sans activité.
 - En ligne : GitHub Pages, publié par `.github/workflows/pages.yml` à chaque push sur `main`. Chaque push arrive directement sur la tablette du coiffeur : tester avant.
 - Textes de l'interface en français, avec espace fine insécable (U+202F) avant `? ! :` et insécable (U+00A0) à l'intérieur des « » ; pas d'emoji, icônes SVG en ligne (`ICONS`). Ces caractères font échouer les remplacements exacts tapés à la main : les copier depuis le fichier.
 
 ## Lancer et tester
 - `npx http-server -p 8080 -c-1` dans `app/`, puis http://localhost:8080.
+- Calculs de l'agenda : `node --test "tests/*.test.js"` (à la racine).
 - Pas de tablette sous la main : tester avec Playwright en 1280×800 (paysage) et 800×1280 (portrait), dans un contexte isolé (`browser().newContext()`) pour ne pas mélanger les données IndexedDB ; `page.clock.install()` pour les minuteurs (2 min client, 10 min coiffeur).
   - Playwright du MCP : fichiers lus ou écrits seulement dans le projet (captures dans `.playwright-mcp/`, ignoré par git) ; pas de `require` dans le code exécuté. Premier lancement : l'appli ouvre directement « Nouveau code », sans accueil.
   - Clavier Android ouvert : simuler en réduisant la hauteur (~440 px en paysage) ; la page déclare `interactive-widget=resizes-content`.

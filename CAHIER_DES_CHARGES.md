@@ -11,6 +11,10 @@ Maquettes : https://claude.ai/artifact/4HnJfspaKf4fw7f9TrdCSM
 3. **Écran client** : vérifie ses prestations, complète prénom / nom / téléphone / e-mail (facultatif),
    coche le consentement RGPD, valide. Retour auto à l'accueil après 2 min d'inactivité.
    Revenir à l'espace coiffeur exige le PIN.
+4. **Agenda** (espace coiffeur, bouton « Agenda ») : semaine du lundi au samedi, 8 h 30 – 18 h. Un appui sur un créneau libre
+   ouvre la prise de rendez-vous : téléphone (ou nom) du client, fiche trouvée ou créée avec juste le prénom, prestations,
+   durée ajustable par quart d'heure. Un rendez-vous se modifie, se déplace ou s'annule. À l'ouverture de l'espace coiffeur,
+   les rendez-vous du jour ; un appui ouvre la fiche avec les prestations prévues cochées.
 
 ## Règles
 - Un seul coiffeur pour l'instant (pas de choix de coiffeur).
@@ -24,6 +28,9 @@ Maquettes : https://claude.ai/artifact/4HnJfspaKf4fw7f9TrdCSM
   après confirmation, la fiche du client, ses visites et ses photos sont effacées.
 - Code PIN oublié : code de déblocage à 8 chiffres, connu de la seule personne qui a installé l'appli ; il permet de choisir un nouveau PIN.
 - Historique : le coiffeur peut **modifier ou supprimer** une visite passée.
+- Rendez-vous : pas de chevauchement, fin à 18 h au plus tard. Un rendez-vous garde une copie du prénom et du téléphone.
+  Sans accord RGPD, il reste sur la tablette ; si le client refuse l'accord, ses rendez-vous passés sont effacés
+  et ceux à venir restent sur la tablette seulement.
 
 ## Données
 - Hors-ligne d'abord : tout est enregistré sur la tablette puis synchronisé quand le réseau revient.
