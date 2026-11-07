@@ -758,3 +758,44 @@ button.photo:active { border-color: var(--accent); }
   .agenda-head h1 { font-size: 26px; }
   .week-row { grid-template-columns: 40px repeat(6, minmax(0, 1fr)); column-gap: 4px; }
 }
+
+/* Fenêtre de rendez-vous */
+.appt-dialog { width: min(720px, 100%); gap: 14px; }
+.appt-when { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.appt-day { font-size: 18px; font-weight: 600; }
+.stepper { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.stepper .label { min-width: 70px; }
+.step-value { min-width: 84px; text-align: center; font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.appt-query { display: flex; align-items: flex-end; gap: 10px; }
+.appt-query .field { flex: 1; }
+.appt-query .btn { margin-bottom: 4px; white-space: nowrap; }
+.appt-who { display: flex; flex-direction: column; gap: 10px; }
+.appt-who:empty { display: none; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 48px;
+  padding: 6px 14px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: transparent;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+}
+.chip small { font-size: 13px; font-weight: 500; color: var(--muted); }
+.chip:active { background: var(--panel-2); }
+.chip[aria-pressed='true'] { background: var(--panel-2); border: 1.5px solid var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.chip-add { flex-direction: row; align-items: center; gap: 6px; border-style: dashed; color: var(--accent); }
+.appt-person { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; font-size: 19px; }
+.services-compact { gap: 8px; }
+.services-compact .service { min-height: 48px; padding: 8px; font-size: 14px; border-radius: 12px; }
+.appt-actions { flex-wrap: wrap; justify-content: space-between; }
+.appt-more, .appt-main { display: flex; gap: 8px; flex-wrap: wrap; }
+.appt-main { margin-left: auto; }
+@media (max-width: 700px) {
+  .services-compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

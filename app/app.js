@@ -191,6 +191,7 @@ function selectorOf(el) {
 const ICONS = {
   search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  minus: '<path d="M5 12h14"/>',
   lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   camera: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
   x: '<path d="M6 6l12 12M18 6L6 18"/>',
@@ -428,6 +429,217 @@ function viewCoiffeur() {
 
 // ---------- Agenda ----------
 
+const fmtDayTitle = (iso) => cap(new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(iso)));
+const hasLetters = (s) => /\p{L}/u.test(s);
+const MAX_CHOICES = 4;
+
+async function loadToday() {
+  const d = new Date();
+  const from = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  S.todayAppts = await db.appointmentsBetween(from.toISOString(), addDays(from, 1).toISOString());
+}
+const refreshAppts = () => Promise.all([loadWeek(), loadToday()]);
+const findAppt = (id) => S.weekAppts.find((a) => a.id === id) || S.todayAppts.find((a) => a.id === id);
+
+// Durée proposée : dernier rendez-vous du client aux mêmes prestations, sinon durée habituelle ;
+// plus recalculée dès que le coiffeur l'a réglée lui-même.
+function prefill(m) {
+  if (m.durationSet) return;
+  const p = core.prefillDuration(apptServices(m), m.prev.filter((a) => a.id !== m.id));
+  m.duration = p.duration;
+  m.from = p.from;
+}
+const apptServices = (m) => SERVICES.filter((s) => m.services.has(s));
+
+function newApptModal(startIso) {
+  const m = { type: 'appt', start: startIso, duration: 30, durationSet: false, from: null, services: new Set(), query: '', keyboard: 'tel', clientId: null, other: false, firstName: '', prev: [], error: '' };
+  prefill(m);
+  return m;
+}
+
+async function openApptModal(a) {
+  openModal({
+    type: 'appt',
+    id: a.id,
+    start: a.start,
+    duration: a.duration,
+    durationSet: true,
+    from: null,
+    services: new Set(a.services),
+    clientId: a.clientId,
+    prev: a.clientId ? await db.appointmentsOf(a.clientId) : [],
+    error: ''
+  });
+}
+
+// Choix de la personne : fiches trouvées par le téléphone (ou le nom), « Autre personne », prénom.
+function viewApptWho(m) {
+  const matches = matchClients(m.query).slice(0, MAX_CHOICES);
+  const showFirst = m.other || (norm(m.query) && !matches.length);
+  const chosen = m.clientId && S.clients.find((c) => c.id === m.clientId);
+  const chip = (c) => `<button type="button" class="chip" data-action="appt-who" data-id="${c.id}" aria-pressed="${c.id === m.clientId}">
+      <span>${esc(fullName(c))}</span>${c.phone ? `<small>${esc(fmtPhone(c.phone))}</small>` : ''}</button>`;
+  const first = m.firstName || (hasLetters(m.query) ? m.query.trim() : '');
+  return `
+    ${
+      norm(m.query)
+        ? `<div class="chips" role="group" aria-label="Client">
+            ${matches.map(chip).join('')}
+            <button type="button" class="chip chip-add" data-action="appt-other" aria-pressed="${showFirst}">${icon('plus', 16)} Autre personne</button>
+          </div>`
+        : ''
+    }
+    ${
+      showFirst
+        ? `<label class="field">Prénom<input name="apptFirst" value="${esc(first)}" autocomplete="off" autocapitalize="words"></label>
+           <p class="muted small">Une fiche sera créée avec ce prénom${digits(m.query).length >= 6 && !hasLetters(m.query) ? ' et ce numéro' : ''} ; le client la complétera à sa visite.</p>`
+        : ''
+    }
+    ${chosen?.allergies ? `<div class="allergy allergy-mini">${icon('alert', 18)}<p><strong>Allergies</strong> <span>${esc(chosen.allergies)}</span></p></div>` : ''}`;
+}
+
+function viewApptDur(m) {
+  const hint = m.durationSet ? '' : m.from ? `comme le ${fmtDayShort(m.from)}` : 'durée habituelle';
+  return `
+    <button type="button" class="btn btn-ghost btn-icon" data-action="appt-dur" data-step="-15" aria-label="Raccourcir de 15 minutes"${m.duration <= core.STEP_MIN ? ' disabled' : ''}>${icon('minus', 20)}</button>
+    <output class="step-value">${core.fmtDuration(m.duration)}</output>
+    <button type="button" class="btn btn-ghost btn-icon" data-action="appt-dur" data-step="15" aria-label="Allonger de 15 minutes">${icon('plus', 20)}</button>
+    ${hint ? `<span class="muted small">${hint}</span>` : ''}`;
+}
+
+function viewApptDialog(m) {
+  const a = m.id ? findAppt(m.id) : null;
+  const start = new Date(m.start);
+  const min = core.minutesOf(start);
+  const c = a && apptClient(a);
+  const person = a
+    ? `<div class="appt-person">
+        <strong>${esc(apptName(a, true))}</strong>
+        ${c?.phone || a.phone ? `<span class="muted">${esc(fmtPhone(c?.phone || a.phone))}</span>` : ''}
+      </div>
+      ${c?.allergies ? `<div class="allergy allergy-mini">${icon('alert', 18)}<p><strong>Allergies</strong> <span>${esc(c.allergies)}</span></p></div>` : ''}`
+    : `<div class="appt-query">
+        <label class="field">Téléphone ou nom
+          <input name="apptQuery" type="text" inputmode="${m.keyboard}" value="${esc(m.query)}" autocomplete="off" data-autofocus>
+        </label>
+        <button type="button" class="btn btn-quiet btn-sm" data-action="appt-keyboard">${m.keyboard === 'tel' ? 'Clavier lettres' : 'Clavier chiffres'}</button>
+      </div>
+      <div id="appt-who" class="appt-who">${viewApptWho(m)}</div>`;
+  return `
+    <form data-form="appt" class="dialog appt-dialog" novalidate>
+      <h2 class="serif" id="dlg-title" tabindex="-1"${a ? ' data-autofocus' : ''}>${a ? 'Rendez-vous' : 'Nouveau rendez-vous'}</h2>
+      <div class="appt-when">
+        <span class="appt-day">${fmtDayTitle(m.start)}</span>
+        <div class="stepper" role="group" aria-label="Heure">
+          <button type="button" class="btn btn-ghost btn-icon" data-action="appt-time" data-step="-15" aria-label="15 minutes plus tôt"${min <= core.OPEN_MIN ? ' disabled' : ''}>${icon('minus', 20)}</button>
+          <output class="step-value">${fmtMin(min)}</output>
+          <button type="button" class="btn btn-ghost btn-icon" data-action="appt-time" data-step="15" aria-label="15 minutes plus tard"${min >= core.CLOSE_MIN - core.STEP_MIN ? ' disabled' : ''}>${icon('plus', 20)}</button>
+        </div>
+      </div>
+      ${person}
+      <div class="services services-compact" role="group" aria-label="Prestations prévues">
+        ${SERVICES.map((s) => `<button type="button" class="service" aria-pressed="${m.services.has(s)}" data-action="appt-service" data-service="${esc(s)}">${icon('check', 16)}<span>${esc(s)}</span></button>`).join('')}
+      </div>
+      <div class="stepper" role="group" aria-label="Durée" id="appt-dur"><span class="label">Durée</span>${viewApptDur(m)}</div>
+      <p class="err err-inline" id="appt-err" role="alert">${esc(m.error)}</p>
+      <div class="form-actions appt-actions">
+        ${
+          a
+            ? `<div class="appt-more">
+                <button type="button" class="btn btn-danger-outline btn-sm" data-action="appt-cancel">${icon('trash', 16)} Annuler le rendez-vous</button>
+                <button type="button" class="btn btn-ghost btn-sm" data-action="appt-move">${icon('move', 16)} Déplacer</button>
+                <button type="button" class="btn btn-ghost btn-sm" data-action="appt-open">${icon('card', 16)} Ouvrir la fiche</button>
+              </div>`
+            : ''
+        }
+        <div class="appt-main">
+          <button type="button" class="btn btn-ghost" data-action="close-modal">${a ? 'Fermer' : 'Annuler'}</button>
+          <button type="submit" class="btn btn-accent">Enregistrer</button>
+        </div>
+      </div>
+    </form>`;
+}
+
+// Raison du refus d'un horaire, ou '' s'il convient.
+async function slotProblem(candidate, isNew) {
+  if (isNew && new Date(candidate.start) < new Date()) return 'Ce créneau est déjà passé.';
+  const day = new Date(candidate.start);
+  const from = new Date(day.getFullYear(), day.getMonth(), day.getDate());
+  const list = await db.appointmentsBetween(from.toISOString(), addDays(from, 1).toISOString());
+  const pb = core.checkSlot(candidate, list);
+  if (!pb) return '';
+  if (pb.reason === 'close') return 'Le salon ferme à 18 h.';
+  return `Chevauche le rendez-vous de ${apptName(pb.other)} à ${fmtTime(pb.other.start)}.`;
+}
+
+async function saveApptForm() {
+  const m = S.modal;
+  const a = m.id ? findAppt(m.id) : null;
+  const fail = (msg) => {
+    m.error = msg;
+    const slot = app.querySelector('#appt-err');
+    if (slot) slot.textContent = msg;
+    announce(msg);
+  };
+  let client = a ? apptClient(a) : m.clientId && S.clients.find((c) => c.id === m.clientId);
+  const firstName = (m.firstName || (hasLetters(m.query || '') ? m.query : '')).trim();
+  const newPerson = !a && !client && (m.other || norm(m.query));
+  if (!a && !client && !(newPerson && firstName)) return fail('Choisissez la fiche ou tapez un prénom.');
+  const problem = await slotProblem({ id: m.id, start: m.start, duration: m.duration }, !a || m.start !== a.start);
+  if (problem) return fail(problem);
+  if (newPerson && !client) {
+    const phone = !hasLetters(m.query) && digits(m.query).length >= 6 ? m.query.trim() : '';
+    client = await db.saveClient({ firstName, phone });
+    await loadClients();
+  }
+  await db.saveAppointment({
+    ...(a || {}),
+    clientId: a ? a.clientId : client.id,
+    firstName: client ? client.firstName : a.firstName,
+    phone: client ? client.phone : a.phone,
+    start: m.start,
+    duration: m.duration,
+    services: apptServices(m)
+  });
+  await refreshAppts();
+  closeModal();
+  toast(a ? 'Rendez-vous modifié' : 'Rendez-vous enregistré');
+}
+
+// Ouvre la fiche du rendez-vous, prestations prévues cochées si la visite du jour est encore vide.
+async function openApptClient(a) {
+  S.space = 'fiches';
+  S.modal = null;
+  S.modalReturn = null;
+  if (apptClient(a)) {
+    await selectClient(a.clientId);
+    if (!draftHasContent(S.draft)) S.draft.services = new Set(a.services);
+    render({ top: true, focus: '.client-head h1' });
+    return;
+  }
+  render();
+  openModal({ type: 'client', client: { firstName: a.firstName, lastName: '', phone: fmtPhone(a.phone), email: '', allergies: '' } });
+}
+
+async function moveTo(startIso) {
+  const a = await db.getAppointment(S.moving.id); // peut être dans une autre semaine que celle affichée
+  if (!a) {
+    S.moving = null;
+    render();
+    return;
+  }
+  const problem = await slotProblem({ id: a.id, start: startIso, duration: a.duration }, true);
+  if (problem) {
+    toast(problem);
+    return;
+  }
+  await db.saveAppointment({ ...a, start: startIso });
+  S.moving = null;
+  await refreshAppts();
+  render();
+  toast(`Rendez-vous déplacé au ${fmtDayTitle(startIso).toLowerCase()} à ${fmtTime(startIso)}`);
+}
+
 const DAY_NAMES = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 const SHORT_SERVICE = { 'Coupe & coiffage': 'Coupe', Coloration: 'Couleur' };
 const OPEN_SPAN = core.CLOSE_MIN - core.OPEN_MIN;
@@ -537,11 +749,13 @@ function viewAgenda() {
   </div>`;
 }
 
-function searchClients() {
-  const q = norm(S.query);
-  const qd = digits(S.query);
-  const byRecent = (a, b) => (S.lastVisit.get(b.id) || b.createdAt).localeCompare(S.lastVisit.get(a.id) || a.createdAt);
-  if (!q) return [...S.clients].sort(byRecent).slice(0, 12);
+const byRecent = (a, b) => (S.lastVisit.get(b.id) || b.createdAt).localeCompare(S.lastVisit.get(a.id) || a.createdAt);
+
+// Fiches dont le nom ou le téléphone correspond, les plus récentes d'abord (rien pour une recherche vide).
+function matchClients(query) {
+  const q = norm(query);
+  const qd = digits(query);
+  if (!q) return [];
   return S.clients
     .filter((c) => {
       const name = norm(`${c.firstName} ${c.lastName}`);
@@ -549,6 +763,11 @@ function searchClients() {
       return name.includes(q) || rev.includes(q) || (qd.length >= 2 && digits(c.phone).includes(qd));
     })
     .sort(byRecent);
+}
+
+function searchClients() {
+  if (!norm(S.query)) return [...S.clients].sort(byRecent).slice(0, 12);
+  return matchClients(S.query);
 }
 
 function viewResults() {
@@ -972,6 +1191,18 @@ function viewModal() {
           <button type="button" class="btn btn-danger-outline btn-lg" data-action="confirm-no-consent">Ne pas conserver</button>
         </div>
       </div>`;
+  } else if (m.type === 'appt') {
+    body = viewApptDialog(m);
+  } else if (m.type === 'confirm-appt-cancel') {
+    body = `
+      <div class="dialog dialog-sm">
+        <h2 class="serif" id="dlg-title">Annuler ce rendez-vous ?</h2>
+        <p class="muted">${esc(m.name)}, ${esc(fmtDayTitle(m.start).toLowerCase())} à ${fmtTime(m.start)}. Il disparaîtra de l’agenda.</p>
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" data-action="close-modal" data-autofocus>Garder</button>
+          <button type="button" class="btn btn-danger" data-action="confirm-appt-cancel">${icon('trash', 18)} Annuler le rendez-vous</button>
+        </div>
+      </div>`;
   } else if (m.type === 'confirm-delete') {
     const v = S.history.find((x) => x.id === m.visitId);
     body = `
@@ -1085,7 +1316,7 @@ async function enterCoiffeur() {
   }
   S.autoLocked = false;
   await loadClients();
-  if (S.space === 'agenda') await loadWeek();
+  await refreshAppts();
   if (S.clientId) await selectClient(S.clientId);
   go('coiffeur');
   if (S.validated) {
@@ -1359,6 +1590,92 @@ const actions = {
     if (S.space === 'agenda') await loadWeek();
     render({ focus: `[data-space="${S.space}"]` });
   },
+  slot: (el) => {
+    const day = core.weekDays(S.week)[Number(el.dataset.day)];
+    const start = atMinutes(day, Number(el.dataset.min)).toISOString();
+    if (S.moving) moveTo(start);
+    else openModal(newApptModal(start));
+  },
+  appt: (el) => {
+    if (S.moving) {
+      toast('Touchez un créneau libre.');
+      return;
+    }
+    const a = findAppt(el.dataset.id);
+    if (a) openApptModal(a);
+  },
+  'appt-keyboard': () => {
+    S.modal.keyboard = S.modal.keyboard === 'tel' ? 'text' : 'tel';
+    render({ focus: '[name="apptQuery"]' });
+  },
+  'appt-who': async (el) => {
+    const m = S.modal;
+    m.clientId = m.clientId === el.dataset.id ? null : el.dataset.id;
+    m.other = false;
+    m.prev = m.clientId ? await db.appointmentsOf(m.clientId) : [];
+    m.error = '';
+    prefill(m);
+    render();
+  },
+  'appt-other': () => {
+    const m = S.modal;
+    m.other = !m.other;
+    m.clientId = null;
+    m.prev = [];
+    m.error = '';
+    prefill(m);
+    render({ focus: m.other ? '[name="apptFirst"]' : null });
+  },
+  'appt-service': (el) => {
+    const m = S.modal;
+    const s = el.dataset.service;
+    m.services.has(s) ? m.services.delete(s) : m.services.add(s);
+    prefill(m);
+    render();
+  },
+  'appt-time': (el) => {
+    const m = S.modal;
+    const start = new Date(m.start);
+    const min = Math.min(Math.max(core.minutesOf(start) + Number(el.dataset.step), core.OPEN_MIN), core.CLOSE_MIN - core.STEP_MIN);
+    m.start = atMinutes(start, min).toISOString();
+    m.error = '';
+    render();
+    announce(fmtMin(min));
+  },
+  'appt-dur': (el) => {
+    const m = S.modal;
+    m.duration = Math.max(core.STEP_MIN, m.duration + Number(el.dataset.step));
+    m.durationSet = true;
+    m.error = '';
+    render();
+    announce(`Durée ${core.fmtDuration(m.duration)}`);
+  },
+  'appt-move': () => {
+    const a = findAppt(S.modal.id);
+    S.moving = { id: a.id, name: apptName(a) };
+    S.space = 'agenda';
+    S.modal = null;
+    S.modalReturn = null;
+    render({ focus: '[data-action="move-cancel"]' });
+    announce(`Touchez le nouveau créneau de ${apptName(a)}.`);
+  },
+  'move-cancel': () => {
+    S.moving = null;
+    render();
+  },
+  'appt-open': () => openApptClient(findAppt(S.modal.id)),
+  'appt-cancel': () => {
+    const a = findAppt(S.modal.id);
+    openModal({ type: 'confirm-appt-cancel', id: a.id, name: apptName(a, true), start: a.start });
+  },
+  'confirm-appt-cancel': async () => {
+    await db.deleteAppointment(S.modal.id);
+    await refreshAppts();
+    S.modal = null;
+    S.modalReturn = null;
+    render();
+    toast('Rendez-vous annulé');
+  },
   'week-prev': () => showWeek(addDays(S.week, -7)),
   'week-next': () => showWeek(addDays(S.week, 7)),
   'week-now': () => showWeek(core.defaultWeek(new Date()), '[data-action="week-next"]'),
@@ -1563,6 +1880,21 @@ app.addEventListener('input', (e) => {
   if (el.matches('[data-search]')) {
     S.query = el.value;
     app.querySelector('#results').innerHTML = viewResults();
+  } else if (el.name === 'apptQuery' && S.modal?.type === 'appt') {
+    const m = S.modal;
+    m.query = el.value;
+    m.error = '';
+    // Une fiche choisie qui ne correspond plus au numéro tapé est oubliée.
+    if (m.clientId && !matchClients(m.query).some((c) => c.id === m.clientId)) {
+      m.clientId = null;
+      m.prev = [];
+      prefill(m);
+      app.querySelector('#appt-dur').innerHTML = `<span class="label">Durée</span>${viewApptDur(m)}`;
+    }
+    app.querySelector('#appt-who').innerHTML = viewApptWho(m);
+    app.querySelector('#appt-err').textContent = '';
+  } else if (el.name === 'apptFirst' && S.modal?.type === 'appt') {
+    S.modal.firstName = el.value;
   } else if (el.matches('[data-bind]')) {
     const [a, b] = el.dataset.bind.split('.');
     if (b) S.draft[a][b] = el.value;
@@ -1602,6 +1934,11 @@ app.addEventListener('submit', async (e) => {
   const form = e.target;
   const data = Object.fromEntries(new FormData(form));
   const val = (k) => String(data[k] ?? '').trim();
+
+  if (form.dataset.form === 'appt') {
+    await saveApptForm();
+    return;
+  }
 
   if (form.dataset.form === 'client') {
     const isNew = !S.modal.client.id;
@@ -1808,7 +2145,7 @@ async function onPulled() {
     if (S.client) await loadHistory();
     else S.clientId = null;
   }
-  if (S.space === 'agenda') await loadWeek();
+  await refreshAppts();
   if (S.view === 'coiffeur' && !S.modal) render();
 }
 
