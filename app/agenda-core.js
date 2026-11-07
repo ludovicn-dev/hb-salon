@@ -31,10 +31,13 @@ export function weekStart(date) {
   return addDays(day, -((day.getDay() + 6) % 7));
 }
 
-// Salon fermé le dimanche : on montre déjà la semaine qui vient.
+// Le samedi après-midi, la semaine est presque finie, et le dimanche le salon est fermé : on montre
+// déjà la semaine qui vient (les rendez-vous du jour restent sur l'accueil de l'espace coiffeur).
+export const NEXT_WEEK_SAT_HOUR = 12;
 export function defaultWeek(now) {
   const monday = weekStart(now);
-  return now.getDay() === 0 ? addDays(monday, 7) : monday;
+  const turned = now.getDay() === 0 || (now.getDay() === 6 && now.getHours() >= NEXT_WEEK_SAT_HOUR);
+  return turned ? addDays(monday, 7) : monday;
 }
 
 export const weekDays = (monday) => Array.from({ length: 6 }, (_, i) => addDays(monday, i));
@@ -136,11 +139,14 @@ export function lastColor(visits, now) {
   return { days, date: last.date };
 }
 
+// En semaines tant que ça compte pour une couleur (repousse), puis en mois et en années.
 export function agoText(days) {
   if (days <= 0) return 'aujourd’hui';
   if (days < 14) return `il y a ${days} jour${days > 1 ? 's' : ''}`;
-  const weeks = Math.floor(days / 7);
-  return `il y a ${weeks} semaines`;
+  if (days < 91) return `il y a ${Math.floor(days / 7)} semaines`;
+  if (days < 365) return `il y a ${Math.round(days / 30.44)} mois`;
+  const years = Math.floor(days / 365);
+  return `il y a ${years} an${years > 1 ? 's' : ''}`;
 }
 
 export function fmtDuration(min) {

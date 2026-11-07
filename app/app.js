@@ -54,6 +54,7 @@ const S = {
   moving: null, // { id, name, error } : rendez-vous à déplacer, en attente du nouveau créneau
   note: null, // { text, undo? } : dernier message de l'agenda, effacé à l'action suivante
   flash: null, // id du rendez-vous qui vient d'être noté ou déplacé (il luit un instant)
+  refused: null, // sélecteur du créneau touché en vain pendant un déplacement (il luit en corail)
   nextAppt: null, // prochain rendez-vous du client affiché
   todayAppts: [], // rendez-vous du jour (accueil de l'espace coiffeur)
   modal: null, // { type: 'client' | 'backup' | 'confirm-delete' | 'photo' | 'appt' | ..., ... }
@@ -183,7 +184,7 @@ function toast(message) {
 }
 
 // Sélecteur stable d'un élément, pour lui rendre le focus après un nouveau rendu.
-const KEY_ATTRS = ['id', 'name', 'data-bind', 'data-action', 'data-tab', 'data-service', 'data-id', 'data-key', 'data-visit', 'data-index'];
+const KEY_ATTRS = ['id', 'name', 'data-bind', 'data-action', 'data-tab', 'data-service', 'data-id', 'data-key', 'data-visit', 'data-index', 'data-day', 'data-min'];
 function selectorOf(el) {
   if (!el || el === document.body || !app.contains(el)) return null;
   const parts = KEY_ATTRS.filter((a) => el.hasAttribute(a)).map((a) => `[${a}="${CSS.escape(el.getAttribute(a))}"]`);
@@ -336,6 +337,7 @@ function render({ top = false, focus = null } = {}) {
   app.dataset.modal = S.modal?.type || '';
   // Bienvenue / Merci : apparition lente à l'arrivée seulement, pas quand l'écran est redessiné (sauvegarde…).
   if (!same) app.querySelector(':scope > .welcome')?.classList.add('enter');
+  if (S.refused) app.querySelector(S.refused)?.classList.add('refuse');
 
   if (scrolls) {
     SCROLLERS.forEach((sel, i) => {
@@ -384,7 +386,7 @@ function viewPin() {
   const len = p.mode === 'recover' ? RECOVERY_LEN : 4;
   const locked = Date.now() < S.pinLockedUntil;
   const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
-  const dis = locked ? ' disabled' : '';
+  const dis = locked || p.checking ? ' disabled' : '';
   const dots = Array.from({ length: len }, (_, i) => `<span class="dot${i < p.entry.length ? ' on' : ''}"></span>`).join('');
   const showCancel = p.cancel || p.mode === 'recover';
   return `
@@ -393,8 +395,9 @@ function viewPin() {
     <h1 class="serif">${title}</h1>
     <p class="muted pin-sub">${sub}</p>
     ${p.hint && p.mode !== 'recover' ? `<p class="muted small pin-sub">${p.hint}</p>` : ''}
+    ${p.mode === 'recover' ? '<p class="muted small pin-sub">Vos fiches et votre agenda ne bougent pas : seul le code change.</p>' : ''}
     <div class="dots${len > 4 ? ' dots-long' : ''}" aria-hidden="true">${dots}</div>
-    <p class="err">${esc(locked ? lockMsg(lockLeft()) : p.error)}</p>
+    <p class="err${p.checking ? ' is-busy' : ''}">${p.checking ? 'Vérification du code…' : esc(locked ? lockMsg(lockLeft()) : p.error)}</p>
     <div class="keypad">
       ${keys.map((k) => `<button type="button" class="key" data-action="pin-key" data-key="${k}"${dis}>${k}</button>`).join('')}
       ${showCancel ? `<button type="button" class="key key-text" data-action="pin-cancel">Annuler</button>` : '<span></span>'}
@@ -518,7 +521,9 @@ function apptSpan(m) {
   else if (end > core.CLOSE_MIN) tail = 'trop tard, le salon ferme à 18 h';
   else {
     over = false;
-    tail = until >= core.CLOSE_MIN ? 'libre jusqu’à la fermeture' : `libre jusqu’à ${fmtMin(until)}`;
+    // Pile à la limite : on dit ce qui suit plutôt que « libre jusqu'à » l'heure de fin elle-même.
+    if (until >= core.CLOSE_MIN) tail = end === core.CLOSE_MIN ? 'pile à la fermeture' : 'libre jusqu’à la fermeture';
+    else tail = end === until ? `juste avant ${apptName(next)}` : `libre jusqu’à ${fmtMin(until)}`;
   }
   return { text: `Fin à ${fmtMin(end)} · ${tail}`, over };
 }
@@ -597,7 +602,7 @@ function viewApptDialog(m) {
     ? `<div class="appt-person">
         <strong>${esc(apptName(a, true))}</strong>
         ${c?.phone || a.phone ? `<span class="muted">${esc(fmtPhone(c?.phone || a.phone))}</span>` : ''}
-        <button type="button" class="btn btn-ghost btn-sm appt-open" data-action="appt-open">${icon('card', 16)} Ouvrir la fiche</button>
+        <button type="button" class="btn btn-ghost btn-sm appt-open" data-action="appt-open">${icon(c ? 'card' : 'plus', 16)} ${c ? 'Ouvrir la fiche' : 'Créer la fiche'}</button>
       </div>
       ${c?.allergies ? `<div class="allergy allergy-mini">${icon('alert', 18)}<p><strong>Allergies</strong> <span>${esc(c.allergies)}</span></p></div>` : ''}`
     : `<div class="appt-query">
@@ -632,9 +637,9 @@ function viewApptDialog(m) {
       </div>
       <div class="stepper" role="group" aria-label="Durée" id="appt-dur"><span class="label">Durée</span>${viewApptDur(m)}</div>
       <p class="err err-inline" id="appt-err" role="alert">${esc(m.error)}</p>
-      <div class="form-actions appt-actions">
+      <div class="form-actions split-actions">
         ${a && !done ? `<button type="button" class="btn btn-danger-outline btn-sm" data-action="appt-cancel">${icon('trash', 16)} Annuler le rendez-vous</button>` : ''}
-        <div class="appt-main">
+        <div class="actions-main">
           <button type="button" class="btn btn-ghost" data-action="close-modal">${closeLabel}</button>
           <button type="submit" class="btn btn-accent">Enregistrer</button>
         </div>
@@ -642,15 +647,16 @@ function viewApptDialog(m) {
     </form>`;
 }
 
-// Raison du refus d'un horaire, ou '' s'il convient.
-async function slotProblem(candidate, isNew) {
+// Raison du refus d'un horaire, ou '' s'il convient. `fixed` : la durée ne se règle pas ici
+// (déplacement, retour en arrière), on ne propose donc pas de la raccourcir.
+async function slotProblem(candidate, isNew, fixed = false) {
   if (isNew && new Date(candidate.start) < new Date()) return 'Ce créneau est déjà passé.';
   const day = new Date(candidate.start);
   const from = new Date(day.getFullYear(), day.getMonth(), day.getDate());
   const list = await db.appointmentsBetween(from.toISOString(), addDays(from, 1).toISOString());
   const pb = core.checkSlot(candidate, list);
   if (!pb) return '';
-  if (pb.reason === 'close') return 'Le salon ferme à 18 h.';
+  if (pb.reason === 'close') return fixed ? 'Il finirait après la fermeture, à 18 h.' : 'Le salon ferme à 18 h : raccourcissez la durée ou avancez l’heure.';
   return `Chevauche le rendez-vous de ${apptName(pb.other)} à ${fmtTime(pb.other.start)}.`;
 }
 
@@ -730,22 +736,35 @@ async function openApptClient(a) {
     render({ top: true, focus: '.client-head h1' });
     return;
   }
+  // Pas de fiche (effacée après un refus RGPD) : la nouvelle fiche sera rattachée à ce rendez-vous.
   render();
-  openModal({ type: 'client', client: { firstName: a.firstName, lastName: '', phone: fmtPhone(a.phone), email: '', allergies: '' } });
+  openModal({ type: 'client', apptId: a.id, client: { firstName: a.firstName, lastName: '', phone: fmtPhone(a.phone), email: '', allergies: '' } });
+}
+
+// Rendez-vous sans fiche rattaché à la fiche créée ou retrouvée : il suit désormais la fiche
+// (et ses règles de sauvegarde), il n'est plus gardé « sur la tablette seulement ».
+async function linkAppt(apptId, client) {
+  const a = apptId && (await db.getAppointment(apptId));
+  if (!a || a.clientId) return;
+  const { localOnly, ...rest } = a;
+  await db.saveAppointment({ ...rest, clientId: client.id, firstName: client.firstName, phone: client.phone });
+  await refreshAppts();
 }
 
 // Le refus reste écrit sous le titre (en corail) jusqu'au prochain essai ; la réussite se défait d'un appui.
-async function moveTo(startIso) {
+async function moveTo(startIso, tapped = null) {
   const a = await db.getAppointment(S.moving.id); // peut être dans une autre semaine que celle affichée
   if (!a) {
     S.moving = null;
     render();
     return;
   }
-  const problem = await slotProblem({ id: a.id, start: startIso, duration: a.duration }, true);
+  const problem = await slotProblem({ id: a.id, start: startIso, duration: a.duration }, true, true);
   if (problem) {
     S.moving.error = `${problem} Touchez un autre créneau.`;
+    S.refused = tapped; // le créneau touché luit un instant en corail, là où est le doigt
     render();
+    S.refused = null;
     announce(S.moving.error);
     return;
   }
@@ -774,7 +793,7 @@ async function undoAgenda() {
     const { id, syncedAt, dirty, updatedAt, ...rest } = u.appt;
     record = rest;
   }
-  const problem = await slotProblem(record, false);
+  const problem = await slotProblem(record, false, true);
   if (problem) {
     agendaNote(`Impossible de revenir en arrière : ${problem.charAt(0).toLowerCase()}${problem.slice(1)}`);
     render();
@@ -846,6 +865,19 @@ function freeSlots(day, appts, now) {
   return out;
 }
 
+// Un quart d'heure ne fait que 15 px : sa zone tactile déborde de 8 px sur ses voisins plus grands,
+// jamais sur un autre quart d'heure (chacun garde au moins sa propre case).
+const REACH_PX = 8;
+function reachOf(spans) {
+  const shorts = spans.filter((x) => x.end - x.start < core.SLOT_MIN);
+  return (start, end) => {
+    if (end - start >= core.SLOT_MIN) return '';
+    const up = shorts.some((o) => o.end === start) ? 0 : REACH_PX;
+    const down = shorts.some((o) => o.start === end) ? 0 : REACH_PX;
+    return `;--reach-up:${up}px;--reach-down:${down}px`;
+  };
+}
+
 // Les créneaux et les rendez-vous sont écrits dans l'ordre des heures (lecture d'écran) ; le temps
 // écoulé est voilé et n'offre plus de créneau.
 function viewDayColumn(day, i, now) {
@@ -858,9 +890,11 @@ function viewDayColumn(day, i, now) {
   const nowMin = core.minutesOf(now);
   const elapsed = now >= atMinutes(day, core.CLOSE_MIN) ? OPEN_SPAN : isToday ? Math.max(0, nowMin - core.OPEN_MIN) : 0;
   const veil = elapsed ? `<i class="past-veil" style="height:${span(elapsed)}"></i>` : '';
-  const items = freeSlots(day, appts, now).map((f) => ({
+  const free = freeSlots(day, appts, now);
+  const reach = reachOf([...free, ...appts.map((a) => ({ start: core.minutesOf(new Date(a.start)), end: core.minutesOf(new Date(a.start)) + a.duration }))]);
+  const items = free.map((f) => ({
     min: f.start,
-    html: `<button type="button" class="slot" style="top:${pct(f.start)};height:${span(f.end - f.start)}" data-action="slot" data-day="${i}" data-min="${f.start}" aria-label="${esc(`${dayName}, ${fmtMin(f.start)}, libre`)}"></button>`
+    html: `<button type="button" class="slot${f.end - f.start < core.SLOT_MIN ? ' short' : ''}" style="top:${pct(f.start)};height:${span(f.end - f.start)}${reach(f.start, f.end)}" data-action="slot" data-day="${i}" data-min="${f.start}" aria-label="${esc(`${dayName}, ${fmtMin(f.start)}, libre`)}"></button>`
   }));
   for (const a of appts) {
     const start = new Date(a.start);
@@ -890,7 +924,7 @@ function viewDayColumn(day, i, now) {
     items.push({
       min: core.minutesOf(start),
       html: `<button type="button" class="${cls}"
-        style="top:${pct(core.minutesOf(start))};height:${span(a.duration)};left:calc(${(lane / n) * 100}% + 2px);width:calc(${100 / n}% - 4px)"
+        style="top:${pct(core.minutesOf(start))};height:${span(a.duration)};left:calc(${(lane / n) * 100}% + 2px);width:calc(${100 / n}% - 4px)${reach(core.minutesOf(start), core.minutesOf(start) + a.duration)}"
         data-action="appt" data-id="${a.id}" aria-label="${esc(label)}">
         <span class="appt-name">${allergy ? icon('alert', 14) : ''}<span class="appt-n">${esc(apptName(a))}</span></span>
         ${a.duration >= 45 && a.services.length ? `<span class="appt-sub">${esc(shortServices(a))}</span>` : ''}
@@ -941,7 +975,7 @@ function viewAgenda() {
     <div class="week-nav">
       ${extra}
       <button type="button" class="btn btn-ghost btn-icon" data-action="week-prev" aria-label="Semaine précédente">${icon('left', 20)}</button>
-      <button type="button" class="btn btn-ghost" data-action="week-now"${current ? ' disabled' : ''}>Cette semaine</button>
+      <button type="button" class="btn btn-ghost" data-action="week-now"${current ? ' disabled' : ''}>${core.defaultWeek(now) > core.weekStart(now) ? 'Semaine prochaine' : 'Cette semaine'}</button>
       <button type="button" class="btn btn-ghost btn-icon" data-action="week-next" aria-label="Semaine suivante">${icon('right', 20)}</button>
     </div>
   </div>
@@ -981,7 +1015,13 @@ function searchClients() {
 function viewResults() {
   const list = searchClients();
   if (!S.clients.length) return `<p class="muted small pad">Aucune fiche pour l’instant.</p>`;
-  if (!list.length) return `<p class="muted small pad">Aucun client trouvé.</p>`;
+  if (!list.length) {
+    // Le numéro ou le nom tapé sert à créer la fiche, sans le retaper.
+    const q = S.query.trim();
+    const label = hasLetters(q) ? `Créer la fiche « ${esc(q)} »` : digits(q).length >= 6 ? `Créer la fiche ${esc(fmtPhone(q))}` : '';
+    return `<p class="muted small pad">Aucune fiche ne correspond.</p>
+      ${label ? `<button type="button" class="btn-new btn-new-found" data-action="new-client-search">${icon('plus', 18)} <span>${label}</span></button>` : ''}`;
+  }
   return (
     (S.query ? '' : `<p class="label small-label">Récents</p>`) +
     list
@@ -1016,8 +1056,7 @@ function viewEmpty() {
     return `
   <div class="empty">
     <h1 class="serif">Aucun rendez-vous aujourd’hui</h1>
-    <p class="muted">Recherchez la fiche du prochain client à gauche, ou créez-en une nouvelle.</p>
-    <button type="button" class="btn btn-accent" data-action="new-client">${icon('plus', 18)} Nouveau client</button>
+    <p class="muted">Recherchez la fiche du prochain client à gauche, ou créez-en une nouvelle avec « Nouveau client ».</p>
     <button type="button" class="link" data-action="space" data-space="agenda">${icon('calendar', 16)} Ouvrir l’agenda</button>
   </div>`;
   }
@@ -1056,13 +1095,17 @@ function addNotice(notice) {
 
 // Bandeaux dans leur contexte : celui d'une visite est masqué sur la fiche du même client (l'encart
 // « attend la validation » le dit déjà) ; les simples informations ne s'affichent qu'hors fiche.
+// Sur la fiche d'un autre client, la visite en attente n'est qu'un rappel discret, au bouton nommé :
+// le client présent ne doit pas recevoir par erreur la visite (et les coordonnées) d'un autre.
+const rehandLabel = (n, short) => (n.name ? `${short ? 'Repasser à' : 'Repasser la tablette à'} ${esc(n.name)}` : 'Repasser la tablette');
 const viewNotices = () =>
   S.notices
     .map((n, i) => {
       if (n.visitId ? n.clientId === S.clientId : S.client) return '';
-      return `<div class="notice">${icon(n.visitId ? 'clock' : n.sync ? 'cloudOff' : 'info', 20)}<span>${esc(n.text)}</span>
+      const aside = n.visitId && S.client;
+      return `<div class="notice${aside ? ' notice-aside' : ''}">${icon(n.visitId ? 'clock' : n.sync ? 'cloudOff' : 'info', aside ? 18 : 20)}<span>${esc(n.text)}</span>
         ${n.action ? `<button type="button" class="btn btn-sm btn-ghost" data-action="${n.action}">${n.label}</button>` : ''}
-        ${n.visitId ? `<button type="button" class="btn btn-sm btn-accent" data-action="rehand-notice" data-index="${i}">${icon('tablet', 16)} Repasser la tablette</button>` : ''}
+        ${n.visitId ? `<button type="button" class="btn btn-sm ${aside ? 'btn-ghost' : 'btn-accent'}" data-action="rehand-notice" data-index="${i}">${icon('tablet', 16)} ${rehandLabel(n, aside)}</button>` : ''}
         <button type="button" class="btn btn-sm btn-ghost" data-action="dismiss-notice" data-index="${i}">Compris</button></div>`;
     })
     .join('');
@@ -1074,37 +1117,35 @@ const isToday = (iso) => new Date(iso).toDateString() === new Date().toDateStrin
 const latestPending = () => S.history.find((v) => v.status === 'pending');
 const whenOf = (v) => (isToday(v.date) ? `de ${fmtTime(v.date)}` : `du ${fmtDayShort(v.date)}`);
 
-const consentLine = (c) => (c.consentAt ? `Accord RGPD donné le ${fmtDayShort(c.consentAt)}` : '');
+const consentLine = (c) => (c.consentAt ? `accord RGPD le ${fmtDayShort(c.consentAt)}` : '');
 
-// Bandeau du coiffeur après un refus RGPD.
 const keptText = (n) =>
   !n ? '' : n > 1 ? ` Ses ${n} rendez-vous à venir sont gardés sur la tablette.` : ' Son rendez-vous à venir est gardé sur la tablette.';
 
 function lastColorLine() {
   const lc = core.lastColor(S.history, new Date());
-  return lc ? `<p class="last-color">Dernière couleur ${core.agoText(lc.days)} (${fmtDayShort(lc.date)})</p>` : '';
+  return lc ? `<span>Dernière couleur ${core.agoText(lc.days)} (${fmtDayShort(lc.date)})</span>` : '';
 }
 
-// « C'est quand, mon rendez-vous ? » : la réponse est sur la fiche, avec un lien vers la semaine.
+// « C'est quand, mon rendez-vous ? » : la réponse est sur la fiche ; la toucher ouvre la semaine.
 function nextApptLine() {
   const a = S.nextAppt;
   if (!a) return '';
-  return `<p class="next-appt"><span>${icon('calendar', 16)} Prochain rendez-vous : ${fmtDayTitle(a.start).toLowerCase()} à ${fmtTime(a.start)}</span>
-    <button type="button" class="link" data-action="show-appt" data-id="${a.id}">Voir dans l’agenda</button></p>`;
+  return `<button type="button" class="link next-appt" data-action="show-appt" data-id="${a.id}">${icon('calendar', 16)}<span>Prochain rendez-vous : ${fmtDayTitle(a.start).toLowerCase()} à ${fmtTime(a.start)}<span class="sr-only">, voir dans l’agenda</span></span></button>`;
 }
 
 function viewClientDetail() {
   const c = S.client;
   const contact = [fmtPhone(c.phone), c.email].filter(Boolean).join(' · ') || 'Coordonnées à compléter par le client';
   const consent = consentLine(c);
+  // En-tête ramassé : qui (coordonnées, accord), puis ce qui sert au travail (couleur, rendez-vous).
+  const facts = [lastColorLine(), nextApptLine()].filter(Boolean);
   return `
   <div class="client-head">
-    <div>
-      <h1 class="serif">${esc(fullName(c))}</h1>
-      <p class="muted">${esc(contact)}</p>
-      ${lastColorLine()}
-      ${nextApptLine()}
-      ${consent ? `<p class="consent-line">${consent}</p>` : ''}
+    <div class="client-id">
+      <h1 class="serif${fullName(c).length > 28 ? ' is-long' : ''}">${esc(fullName(c))}</h1>
+      <p class="client-meta">${esc(contact)}${consent ? ` · ${consent}` : ''}</p>
+      ${facts.length ? `<div class="client-facts">${facts.join('')}</div>` : ''}
     </div>
     <button type="button" class="btn btn-ghost" data-action="edit-client">${icon('edit', 18)} Modifier la fiche</button>
   </div>
@@ -1345,13 +1386,17 @@ function syncAttention(st) {
 
 function backupClass(st = sync.getStatus()) {
   const a = syncAttention(st);
-  return `btn btn-quiet${a ? ` backup-${a}` : ''}`;
+  return `btn btn-ghost${a ? ` backup-${a}` : ''}`;
 }
 
+// Bouton bordé comme ses voisins ; une sauvegarde jamais activée se lit sans l'ouvrir.
 function backupLabel(st = sync.getStatus()) {
   const a = syncAttention(st);
   const hint = { error: 'à vérifier', wait: 'envoi en attente' }[a];
-  return `${icon(a === 'error' ? 'cloudOff' : a === 'wait' ? 'clock' : 'cloud', 18)} Sauvegarde${hint ? `<span class="sr-only"> : ${hint}</span>` : ''}`;
+  const off = st.state === 'off';
+  const ic = a === 'error' || off ? 'cloudOff' : a === 'wait' ? 'clock' : 'cloud';
+  if (off) return `${icon(ic, 18)}<span class="backup-text">Sauvegarde<span class="backup-off"> non activée</span></span>`;
+  return `${icon(ic, 18)} Sauvegarde${hint ? `<span class="sr-only"> : ${hint}</span>` : ''}`;
 }
 
 function loginError(err) {
@@ -1381,11 +1426,32 @@ function viewModal() {
         </label>
         ${c.id ? '' : '<p class="muted small">Un prénom ou un téléphone suffit : le client complètera ses coordonnées lui-même.</p>'}
         <div class="dup-slot"></div>
-        <div class="form-actions">
-          <button type="button" class="btn btn-ghost" data-action="close-modal">Annuler</button>
-          <button type="submit" class="btn btn-accent" id="client-submit">${c.id ? 'Enregistrer' : 'Créer la fiche'}</button>
+        <div class="form-actions split-actions">
+          ${c.id ? `<button type="button" class="btn btn-danger-outline btn-sm" data-action="delete-client">${icon('trash', 16)} Supprimer la fiche</button>` : ''}
+          <div class="actions-main">
+            <button type="button" class="btn btn-ghost" data-action="close-modal">Annuler</button>
+            <button type="submit" class="btn btn-accent" id="client-submit">${c.id ? 'Enregistrer' : 'Créer la fiche'}</button>
+          </div>
         </div>
       </form>`;
+  } else if (m.type === 'confirm-delete-client') {
+    // Même franchise que la fenêtre RGPD : ce qui part, ce qui reste.
+    const parts = [
+      'ses coordonnées',
+      m.visits ? (m.visits > 1 ? `ses ${m.visits} visites avec formules, notes et photos` : 'sa visite avec formule, note et photos') : '',
+      m.past ? 'ses rendez-vous passés' : ''
+    ].filter(Boolean);
+    const list = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} et ${parts.at(-1)}` : parts[0];
+    body = `
+      <div class="dialog dialog-sm">
+        <h2 class="serif" id="dlg-title">Supprimer ${m.named ? `la fiche de ${esc(m.name)}` : 'cette fiche'} ?</h2>
+        <p class="muted">La suppression efface ${list}, sur la tablette comme dans la sauvegarde en ligne. C’est définitif.</p>
+        ${m.upcoming ? `<p class="muted">${m.upcoming > 1 ? `Ses ${m.upcoming} rendez-vous à venir restent` : 'Son rendez-vous à venir reste'} dans l’agenda, sur la tablette seulement.</p>` : ''}
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" data-action="keep-client" data-autofocus>Garder la fiche</button>
+          <button type="button" class="btn btn-danger" data-action="confirm-delete-client">${icon('trash', 18)} Supprimer la fiche</button>
+        </div>
+      </div>`;
   } else if (m.type === 'backup') {
     const st = sync.getStatus();
     const v = syncView(st);
@@ -1585,6 +1651,7 @@ async function enterCoiffeur() {
       text: hasName(S.client)
         ? `${fullName(S.client)} n’a pas validé sa visite.`
         : `Une visite (fiche du ${fmtDayShort(S.client.createdAt)}) n’a pas été validée.`,
+      name: S.client.firstName || S.client.lastName || '',
       visitId: S.handedVisit.id,
       clientId: S.handedVisit.clientId
     });
@@ -1662,10 +1729,17 @@ async function pinDigit(k) {
   if (p.entry.length < len) return;
 
   if (p.mode === 'unlock' || p.mode === 'recover') {
+    // Le code de déblocage se vérifie lentement (exprès) : une à deux secondes sur la tablette.
+    if (p.mode === 'recover') {
+      p.checking = true;
+      render();
+      announce('Vérification du code');
+    }
     const ok =
       p.mode === 'unlock'
         ? (await hashPin(p.entry)) === (await db.getSetting('pinHash'))
         : (await hashRecovery(p.entry)) === RECOVERY_HASH;
+    p.checking = false;
     if (ok) {
       S.pinFails = 0;
       db.setSetting('pinLock', null);
@@ -1698,8 +1772,9 @@ async function pinDigit(k) {
   } else if (p.mode === 'confirm') {
     if (p.entry === p.first) {
       await db.setSetting('pinHash', await hashPin(p.entry));
-      if (p.recovered) toast('Nouveau code enregistré');
+      const first = !p.cancel && !p.recovered; // premier lancement
       p.next();
+      toast(first ? 'Code enregistré' : 'Nouveau code enregistré');
       return;
     }
     p.entry = '';
@@ -1873,13 +1948,15 @@ const actions = {
   slot: (el) => {
     const day = core.weekDays(S.week)[Number(el.dataset.day)];
     const start = atMinutes(day, Number(el.dataset.min)).toISOString();
-    if (S.moving) moveTo(start);
+    if (S.moving) moveTo(start, selectorOf(el));
     else openModal(newApptModal(start));
   },
   appt: (el) => {
     if (S.moving) {
       S.moving.error = S.moving.id === el.dataset.id ? 'C’est son horaire actuel. Touchez un créneau libre.' : 'Ce créneau est déjà pris. Touchez un créneau libre.';
+      S.refused = selectorOf(el);
       render();
+      S.refused = null;
       announce(S.moving.error);
       return;
     }
@@ -1995,6 +2072,68 @@ const actions = {
     render({ top: true });
   },
   'new-client': () => openModal({ type: 'client', client: { firstName: '', lastName: '', phone: '', email: '', allergies: '' } }),
+  // Recherche sans résultat : la fiche part de ce qui a été tapé (numéro, ou prénom puis nom).
+  'new-client-search': () => {
+    const q = S.query.trim();
+    const words = q.split(/\s+/);
+    const named = hasLetters(q);
+    openModal({
+      type: 'client',
+      client: { firstName: named ? words[0] : '', lastName: named ? words.slice(1).join(' ') : '', phone: named ? '' : fmtPhone(q), email: '', allergies: '' }
+    });
+  },
+  'delete-client': async () => {
+    const m = S.modal;
+    const form = app.querySelector('[data-form="client"]');
+    const typed = form ? Object.fromEntries(new FormData(form)) : {};
+    const client = await db.getClient(m.client.id);
+    const nowIso = new Date().toISOString();
+    const appts = await db.appointmentsOf(client.id);
+    const upcoming = appts.filter((a) => a.start >= nowIso).length;
+    openModal({
+      type: 'confirm-delete-client',
+      id: client.id,
+      named: hasName(client),
+      name: fullName(client),
+      visits: (await db.visitsOf(client.id)).length,
+      past: appts.length - upcoming,
+      upcoming,
+      back: { modal: { ...m, client: { ...m.client, ...typed } }, ret: S.modalReturn } // la saisie en cours est retrouvée
+    });
+  },
+  'keep-client': () => {
+    const { modal, ret } = S.modal.back;
+    S.modal = modal;
+    S.modalReturn = ret;
+    render({ focus: '[data-action="delete-client"]' });
+  },
+  // Comme après un refus RGPD : visites, photos et rendez-vous passés effacés (aussi en ligne),
+  // rendez-vous à venir gardés sur la tablette seulement.
+  'confirm-delete-client': async (el) => {
+    el.disabled = true;
+    const id = S.modal.id;
+    const client = await db.getClient(id);
+    const kept = await db.detachAppointments(id, new Date().toISOString());
+    await db.deleteClient(id);
+    const parked = S.drafts.get(id);
+    dropDraft(parked?.draft);
+    dropDraft(parked?.stash);
+    S.drafts.delete(id);
+    dropNotices((n) => n.clientId === id);
+    if (S.clientId === id) {
+      dropDraft(S.draft);
+      dropDraft(S.stash);
+      Object.assign(S, { clientId: null, client: null, draft: emptyDraft(), stash: null, history: [], nextAppt: null, tab: 'visit' });
+    }
+    S.photoCache.clear();
+    await loadClients();
+    await refreshAppts();
+    S.modal = null;
+    S.modalReturn = null;
+    const who = hasName(client) ? `de ${fullName(client)}` : `créée le ${fmtDayShort(client.createdAt)}${client.phone ? ` (${fmtPhone(client.phone)})` : ''}`;
+    addNotice({ text: `Fiche ${who} supprimée.${keptText(kept)}` });
+    render({ focus: '#search' });
+  },
   'edit-client': () => openModal({ type: 'client', client: { ...S.client, phone: fmtPhone(S.client.phone) } }),
   'close-modal': closeModal,
   tab: (el) => {
@@ -2035,8 +2174,10 @@ const actions = {
     render({ focus: '[name="consent"]' });
   },
   'open-dup': async (el) => {
+    const apptId = el.dataset.link ? S.modal.apptId : null; // même personne : le rendez-vous sans fiche la rejoint
     S.modal = null;
     S.modalReturn = null;
+    if (apptId) await linkAppt(apptId, S.clients.find((c) => c.id === el.dataset.id));
     await selectClient(el.dataset.id);
     render({ top: true, focus: '.client-head h1' });
   },
@@ -2273,7 +2414,7 @@ app.addEventListener('submit', async (e) => {
       S.modal.dupChecked = true;
       form.querySelector('.dup-slot').innerHTML = `<div class="notice notice-inline" role="alert">${icon('info', 20)}
         <span>${sameName(dup, val) ? `Une fiche existe déjà : <strong>${esc(fullName(dup))}</strong>${dup.phone ? `, ${esc(fmtPhone(dup.phone))}` : ''}.` : `Le ${esc(fmtPhone(dup.phone))} est déjà sur la fiche de <strong>${esc(fullName(dup))}</strong>. Même famille ?`}</span>
-        <button type="button" class="btn btn-sm btn-ghost" data-action="open-dup" data-id="${dup.id}">Ouvrir cette fiche</button></div>`;
+        <button type="button" class="btn btn-sm btn-ghost" data-action="open-dup" data-id="${dup.id}"${sameName(dup, val) ? ' data-link="1"' : ''}>Ouvrir cette fiche</button></div>`;
       form.querySelector('#client-submit').textContent = 'Créer quand même';
       form.querySelector('[data-action="open-dup"]').focus();
       return;
@@ -2286,9 +2427,11 @@ app.addEventListener('submit', async (e) => {
       email: val('email'),
       allergies: val('allergies')
     });
+    const apptId = isNew && S.modal.apptId;
     S.modal = null;
     S.modalReturn = null;
     await loadClients();
+    await linkAppt(apptId, saved);
     await selectClient(saved.id);
     render({ top: true, focus: '.client-head h1' });
     toast(isNew ? 'Fiche créée' : 'Fiche enregistrée');
@@ -2378,6 +2521,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     if (S.modal?.type === 'photo') actions['close-photo']();
     else if (S.modal?.type === 'confirm-appt-cancel') actions['keep-appt']();
+    else if (S.modal?.type === 'confirm-delete-client') actions['keep-client']();
     else if (S.modal) closeModal();
     else if (S.moving && S.view === 'coiffeur') actions['move-cancel']();
     else if (S.view === 'pin' && (S.pin.cancel || S.pin.mode === 'recover')) actions['pin-cancel']();
@@ -2410,6 +2554,8 @@ history.pushState(null, '', location.href);
 window.addEventListener('popstate', () => {
   history.pushState(null, '', location.href);
   if (S.modal?.type === 'photo') actions['close-photo']();
+  else if (S.modal?.type === 'confirm-appt-cancel') actions['keep-appt']();
+  else if (S.modal?.type === 'confirm-delete-client') actions['keep-client']();
   else if (S.modal) closeModal();
 });
 

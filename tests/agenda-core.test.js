@@ -52,9 +52,12 @@ test('weekStart : lundi de la semaine, le dimanche appartient à la semaine qui 
   assert.equal(weekStart(d(9, 8)).getTime(), d(9).getTime());
 });
 
-test('defaultWeek : le dimanche ouvre la semaine suivante', () => {
+test('defaultWeek : le samedi après-midi et le dimanche ouvrent la semaine suivante', () => {
   assert.equal(defaultWeek(d(15, 10)).getTime(), d(16).getTime());
   assert.equal(defaultWeek(d(11, 10)).getTime(), d(9).getTime());
+  assert.equal(defaultWeek(d(14, 11, 59)).getTime(), d(9).getTime());
+  assert.equal(defaultWeek(d(14, 12)).getTime(), d(16).getTime());
+  assert.equal(defaultWeek(d(14, 17, 30)).getTime(), d(16).getTime());
 });
 
 test('weekDays : lundi → samedi', () => {
@@ -165,12 +168,18 @@ test('lastColor : visite la plus récente avec Coloration', () => {
   assert.equal(lastColor([{ date: iso(4, 10), services: ['Soin'] }], d(7, 15)), null);
 });
 
-test('agoText : jours sous 2 semaines, puis semaines', () => {
+test('agoText : jours sous 2 semaines, semaines sous 3 mois, puis mois et années', () => {
   assert.equal(agoText(0), 'aujourd’hui');
   assert.equal(agoText(1), 'il y a 1 jour');
   assert.equal(agoText(13), 'il y a 13 jours');
   assert.equal(agoText(14), 'il y a 2 semaines');
   assert.equal(agoText(56), 'il y a 8 semaines');
+  assert.equal(agoText(90), 'il y a 12 semaines');
+  assert.equal(agoText(91), 'il y a 3 mois');
+  assert.equal(agoText(200), 'il y a 7 mois');
+  assert.equal(agoText(364), 'il y a 12 mois');
+  assert.equal(agoText(365), 'il y a 1 an');
+  assert.equal(agoText(800), 'il y a 2 ans');
 });
 
 test('fmtDuration', () => {
