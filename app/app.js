@@ -40,6 +40,8 @@ const S = {
   draftError: '',
   photoBusy: false,
   handedVisit: null, // visite entre les mains du client
+  handedNext: null, // prochain rendez-vous de ce client (à partir de demain), montré sur son écran
+  thanksNext: null, // le même, rappelé sur « Merci »
   checkout: null, // saisie du client, gardée si l'écran est redessiné
   thanksName: '',
   thanksNote: '',
@@ -434,6 +436,7 @@ function viewCoiffeur() {
         <div class="search">
           ${icon('search', 18)}
           <input id="search" type="search" data-search placeholder="Nom ou téléphone…" value="${esc(S.query)}" autocomplete="off">
+          <button type="button" class="search-clear" data-action="clear-search" aria-label="Effacer la recherche">${icon('x', 18)}</button>
         </div>
         <div id="results" class="results">${viewResults()}</div>
         <button type="button" class="btn-new" data-action="new-client">${icon('plus', 18)} Nouveau client</button>
@@ -516,26 +519,31 @@ function apptSpan(m) {
   const { until, next, inside } = freeOf(m);
   let tail;
   let over = true;
+  let late = false;
   if (inside) tail = `chevauche le rendez-vous de ${apptName(next)} à ${fmtTime(next.start)}`;
   else if (end > until && next) tail = `trop long, ${apptName(next)} arrive à ${fmtTime(next.start)}`;
-  else if (end > core.CLOSE_MIN) tail = 'trop tard, le salon ferme à 18 h';
+  else if (end > core.CLOSE_MIN) {
+    over = false;
+    late = true;
+    tail = 'après la fermeture de 18 h';
+  }
   else {
     over = false;
     // Pile à la limite : on dit ce qui suit plutôt que « libre jusqu'à » l'heure de fin elle-même.
     if (until >= core.CLOSE_MIN) tail = end === core.CLOSE_MIN ? 'pile à la fermeture' : 'libre jusqu’à la fermeture';
     else tail = end === until ? `juste avant ${apptName(next)}` : `libre jusqu’à ${fmtMin(until)}`;
   }
-  return { text: `Fin à ${fmtMin(end)} · ${tail}`, over };
+  return { text: `Fin à ${fmtMin(end)} · ${tail}`, over, late };
 }
 const viewApptSpan = (m) => {
-  const { text, over } = apptSpan(m);
-  return `<p class="appt-span${over ? ' over' : ''}" id="appt-span">${esc(text)}</p>`;
+  const { text, over, late } = apptSpan(m);
+  return `<p class="appt-span${over ? ' over' : late ? ' late' : ''}" id="appt-span">${esc(text)}</p>`;
 };
 // Annonce le réglage qui vient d'être fait, et le dépassement s'il y en a un.
 function announceSpan(m, what) {
   const a = m.id && findAppt(m.id);
   const span = a && core.endOf(a) <= new Date() ? null : apptSpan(m);
-  announce(span?.over ? `${what}. ${span.text}` : what);
+  announce(span?.over || span?.late ? `${what}. ${span.text}` : what);
 }
 
 // Fiches trouvées annoncées quand la frappe se pose (pas à chaque chiffre).
@@ -636,28 +644,28 @@ function viewApptDialog(m) {
         ${SERVICES.map((s) => `<button type="button" class="service" aria-pressed="${m.services.has(s)}" data-action="appt-service" data-service="${esc(s)}">${icon('check', 16)}<span>${esc(s)}</span></button>`).join('')}
       </div>
       <div class="stepper" role="group" aria-label="Durée" id="appt-dur"><span class="label">Durée</span>${viewApptDur(m)}</div>
-      <p class="err err-inline" id="appt-err" role="alert">${esc(m.error)}</p>
+      <p class="err err-inline${m.warn && m.error ? ' is-warn' : ''}" id="appt-err" role="alert">${esc(m.error)}</p>
       <div class="form-actions split-actions">
         ${a && !done ? `<button type="button" class="btn btn-danger-outline btn-sm" data-action="appt-cancel">${icon('trash', 16)} Annuler le rendez-vous</button>` : ''}
         <div class="actions-main">
           <button type="button" class="btn btn-ghost" data-action="close-modal">${closeLabel}</button>
-          <button type="submit" class="btn btn-accent">Enregistrer</button>
+          <button type="submit" class="btn btn-accent" id="appt-submit">${m.lateOk ? 'Enregistrer quand même' : 'Enregistrer'}</button>
         </div>
       </div>
     </form>`;
 }
 
-// Raison du refus d'un horaire, ou '' s'il convient. `fixed` : la durée ne se règle pas ici
-// (déplacement, retour en arrière), on ne propose donc pas de la raccourcir.
-async function slotProblem(candidate, isNew, fixed = false) {
-  if (isNew && new Date(candidate.start) < new Date()) return 'Ce créneau est déjà passé.';
+// Problème d'un horaire : { reason: 'past' | 'overlap' | 'close', text }, ou null s'il convient.
+// Finir après 18 h n'est qu'un avertissement : le coiffeur peut le forcer (client en retard, couleur qui déborde).
+async function slotIssue(candidate, isNew) {
+  if (isNew && new Date(candidate.start) < new Date()) return { reason: 'past', text: 'Ce créneau est déjà passé.' };
   const day = new Date(candidate.start);
   const from = new Date(day.getFullYear(), day.getMonth(), day.getDate());
   const list = await db.appointmentsBetween(from.toISOString(), addDays(from, 1).toISOString());
   const pb = core.checkSlot(candidate, list);
-  if (!pb) return '';
-  if (pb.reason === 'close') return fixed ? 'Il finirait après la fermeture, à 18 h.' : 'Le salon ferme à 18 h : raccourcissez la durée ou avancez l’heure.';
-  return `Chevauche le rendez-vous de ${apptName(pb.other)} à ${fmtTime(pb.other.start)}.`;
+  if (!pb) return null;
+  if (pb.reason === 'close') return { reason: 'close', text: `Il finit à ${fmtMin(core.minutesOf(core.endOf(candidate)))}, après la fermeture de 18 h.` };
+  return { reason: 'overlap', text: `Chevauche le rendez-vous de ${apptName(pb.other)} à ${fmtTime(pb.other.start)}.` };
 }
 
 // Un second appui pendant l'enregistrement est ignoré (sinon deux fiches et deux rendez-vous).
@@ -674,10 +682,14 @@ async function saveApptForm() {
 
 async function saveAppt(m) {
   const a = m.id ? findAppt(m.id) : null;
-  const fail = (msg) => {
+  const fail = (msg, warn = false) => {
     m.error = msg;
+    m.warn = warn;
     const slot = app.querySelector('#appt-err');
-    if (slot) slot.textContent = msg;
+    if (slot) {
+      slot.textContent = msg;
+      slot.classList.toggle('is-warn', warn);
+    }
     announce(msg);
   };
   let client = a ? apptClient(a) : m.clientId && S.clients.find((c) => c.id === m.clientId);
@@ -693,8 +705,15 @@ async function saveAppt(m) {
   }
   const newPerson = !a && !client && (m.other || norm(m.query));
   if (!a && !client && !(newPerson && firstName)) return fail('Tapez le téléphone ou le prénom du client.');
-  const problem = await slotProblem({ id: m.id, start: m.start, duration: m.duration }, !a || m.start !== a.start);
-  if (problem) return fail(problem);
+  const issue = await slotIssue({ id: m.id, start: m.start, duration: m.duration }, !a || m.start !== a.start);
+  if (issue?.reason === 'close' && !m.lateOk) {
+    // Premier appui : on prévient ; le second (« Enregistrer quand même ») force le dépassement.
+    m.lateOk = true;
+    const btn = app.querySelector('#appt-submit');
+    if (btn) btn.textContent = 'Enregistrer quand même';
+    return fail(`${issue.text} Touchez « Enregistrer quand même » pour le noter.`, true);
+  }
+  if (issue && issue.reason !== 'close') return fail(issue.text);
   if (newPerson && !client) {
     const phone = !hasLetters(m.query) && digits(m.query).length >= 6 ? m.query.trim() : '';
     client = await db.saveClient({ firstName, phone });
@@ -710,7 +729,8 @@ async function saveAppt(m) {
     services: apptServices(m)
   });
   await refreshAppts();
-  const text = `${a ? 'Rendez-vous modifié' : 'Rendez-vous noté'} : ${apptName(saved, true)}, ${fmtDayTitle(saved.start).toLowerCase()} à ${fmtTime(saved.start)}.`;
+  const late = issue?.reason === 'close' ? ` ${issue.text}` : ''; // dépassement de 18 h forcé : rappelé
+  const text = `${a ? 'Rendez-vous modifié' : 'Rendez-vous noté'} : ${apptName(saved, true)}, ${fmtDayTitle(saved.start).toLowerCase()} à ${fmtTime(saved.start)}.${late}`;
   agendaNote(text);
   S.flash = saved.id;
   S.modalReturn = `[data-action="appt"][data-id="${saved.id}"]`; // le focus va au rendez-vous noté
@@ -759,9 +779,9 @@ async function moveTo(startIso, tapped = null) {
     render();
     return;
   }
-  const problem = await slotProblem({ id: a.id, start: startIso, duration: a.duration }, true, true);
-  if (problem) {
-    S.moving.error = `${problem} Touchez un autre créneau.`;
+  const issue = await slotIssue({ id: a.id, start: startIso, duration: a.duration }, true);
+  if (issue && issue.reason !== 'close') {
+    S.moving.error = `${issue.text} Touchez un autre créneau.`;
     S.refused = tapped; // le créneau touché luit un instant en corail, là où est le doigt
     render();
     S.refused = null;
@@ -771,7 +791,8 @@ async function moveTo(startIso, tapped = null) {
   await db.saveAppointment({ ...a, start: startIso });
   S.moving = null;
   await refreshAppts();
-  const text = `${apptName(a)} : déplacé au ${fmtDayTitle(startIso).toLowerCase()} à ${fmtTime(startIso)}.`;
+  const late = issue ? ` ${issue.text}` : ''; // seul un dépassement de 18 h passe ; on le rappelle
+  const text = `${apptName(a)} : déplacé au ${fmtDayTitle(startIso).toLowerCase()} à ${fmtTime(startIso)}.${late}`;
   agendaNote(text, { kind: 'move', id: a.id, start: a.start, label: 'Remettre comme avant' });
   S.flash = a.id;
   render({ focus: '[data-action="undo"]' });
@@ -793,7 +814,8 @@ async function undoAgenda() {
     const { id, syncedAt, dirty, updatedAt, ...rest } = u.appt;
     record = rest;
   }
-  const problem = await slotProblem(record, false, true);
+  const issue = await slotIssue(record, false);
+  const problem = issue && issue.reason !== 'close' ? issue.text : '';
   if (problem) {
     agendaNote(`Impossible de revenir en arrière : ${problem.charAt(0).toLowerCase()}${problem.slice(1)}`);
     render();
@@ -891,7 +913,8 @@ function viewDayColumn(day, i, now) {
   const elapsed = now >= atMinutes(day, core.CLOSE_MIN) ? OPEN_SPAN : isToday ? Math.max(0, nowMin - core.OPEN_MIN) : 0;
   const veil = elapsed ? `<i class="past-veil" style="height:${span(elapsed)}"></i>` : '';
   const free = freeSlots(day, appts, now);
-  const reach = reachOf([...free, ...appts.map((a) => ({ start: core.minutesOf(new Date(a.start)), end: core.minutesOf(new Date(a.start)) + a.duration }))]);
+  const shown = (a) => Math.min(a.duration, core.CLOSE_MIN - core.minutesOf(new Date(a.start))); // coupé à 18 h
+  const reach = reachOf([...free, ...appts.map((a) => ({ start: core.minutesOf(new Date(a.start)), end: core.minutesOf(new Date(a.start)) + shown(a) }))]);
   const items = free.map((f) => ({
     min: f.start,
     html: `<button type="button" class="slot${f.end - f.start < core.SLOT_MIN ? ' short' : ''}" style="top:${pct(f.start)};height:${span(f.end - f.start)}${reach(f.start, f.end)}" data-action="slot" data-day="${i}" data-min="${f.start}" aria-label="${esc(`${dayName}, ${fmtMin(f.start)}, libre`)}"></button>`
@@ -903,6 +926,8 @@ function viewDayColumn(day, i, now) {
     const live = !done && start <= now;
     const { lane, lanes: n } = lanes.get(a.id);
     const allergy = apptAllergy(a);
+    const vis = shown(a);
+    const late = vis < a.duration;
     const label = [
       `${apptName(a, true)}, ${dayName}, ${fmtTime(a.start)} à ${fmtTime(end.toISOString())}`,
       a.services.join(', '),
@@ -915,7 +940,8 @@ function viewDayColumn(day, i, now) {
       'appt-block',
       done && 'past',
       live && 'live',
-      a.duration < core.SLOT_MIN && 'short',
+      vis < core.SLOT_MIN && 'short',
+      late && 'late',
       S.moving?.id === a.id && 'moving',
       S.flash === a.id && 'flash'
     ]
@@ -924,10 +950,11 @@ function viewDayColumn(day, i, now) {
     items.push({
       min: core.minutesOf(start),
       html: `<button type="button" class="${cls}"
-        style="top:${pct(core.minutesOf(start))};height:${span(a.duration)};left:calc(${(lane / n) * 100}% + 2px);width:calc(${100 / n}% - 4px)${reach(core.minutesOf(start), core.minutesOf(start) + a.duration)}"
+        style="top:${pct(core.minutesOf(start))};height:${span(vis)};left:calc(${(lane / n) * 100}% + 2px);width:calc(${100 / n}% - 4px)${reach(core.minutesOf(start), core.minutesOf(start) + vis)}"
         data-action="appt" data-id="${a.id}" aria-label="${esc(label)}">
         <span class="appt-name">${allergy ? icon('alert', 14) : ''}<span class="appt-n">${esc(apptName(a))}</span></span>
-        ${a.duration >= 45 && a.services.length ? `<span class="appt-sub">${esc(shortServices(a))}</span>` : ''}
+        ${vis >= (late ? 60 : 45) && a.services.length ? `<span class="appt-sub">${esc(shortServices(a))}</span>` : ''}
+        ${late && vis >= 45 ? `<span class="appt-sub appt-end">jusqu’à ${fmtTime(end.toISOString())}</span>` : ''}
       </button>`
     });
   }
@@ -1287,6 +1314,12 @@ const isFilled = (c) => Boolean(c.firstName || c.lastName || c.phone || c.email)
 const leadOf = (c) =>
   c.firstName?.trim() ? `${c.firstName.trim()}, vérifiez vos coordonnées` : isFilled(c) ? 'Vérifiez vos coordonnées' : 'Vos coordonnées';
 
+const fmtNext = (a) => `${fmtDayTitle(a.start)} à ${fmtTime(a.start)}`;
+const viewClientNext = (a) =>
+  a
+    ? `<div class="client-next">${icon('calendar', 22)}<p><span>Votre prochain rendez-vous</span><strong>${fmtNext(a)}</strong></p></div>`
+    : '';
+
 function viewClient() {
   const c = S.checkout || {};
   const visit = S.handedVisit;
@@ -1303,6 +1336,7 @@ function viewClient() {
       <ul class="done-list">
         ${(visit?.services || []).map((s) => `<li>${icon('check', 20)}${esc(s)}</li>`).join('')}
       </ul>
+      ${viewClientNext(S.handedNext)}
       <button type="button" class="btn btn-quiet aside-foot" data-action="client-to-coiffeur">${icon('lock', 16)} Coiffeur</button>
     </aside>
     <section class="client-form">
@@ -1313,10 +1347,10 @@ function viewClient() {
         </div>
         <div class="grid2">
           ${inputField('field field-lg', 'firstName', 'Prénom', 'text', c.firstName, 'autocomplete="given-name" required')}
-          ${inputField('field field-lg', 'lastName', 'Nom', 'text', c.lastName, 'autocomplete="family-name" required')}
+          ${inputField('field field-lg', 'lastName', 'Nom (facultatif)', 'text', c.lastName, 'autocomplete="family-name"')}
         </div>
         <div class="grid-contact">
-          ${inputField('field field-lg', 'phone', 'Téléphone (facultatif)', 'tel', c.phone, 'autocomplete="tel" inputmode="tel"')}
+          ${inputField('field field-lg', 'phone', 'Téléphone', 'tel', c.phone, 'autocomplete="tel" inputmode="tel" required')}
           ${inputField('field field-lg', 'email', 'E-mail (facultatif)', 'email', c.email, 'autocomplete="email" inputmode="email"')}
         </div>
         <label class="consent">
@@ -1329,6 +1363,7 @@ function viewClient() {
           <button type="submit" id="checkout-submit" class="btn btn-accent btn-lg">Valider ${icon('check', 20)}</button>
         </div>
       </form>
+      <button type="button" class="btn btn-quiet client-exit" data-action="client-to-coiffeur">${icon('lock', 16)} Coiffeur</button>
     </section>
   </main>`;
 }
@@ -1341,6 +1376,7 @@ function viewThanks() {
     <div class="thanks-text">
       <h1 class="serif">Merci${name}, <br>à très bientôt !</h1>
       ${S.thanksNote ? `<p class="muted">${S.thanksNote}</p>` : ''}
+      ${S.thanksNext ? `<p class="thanks-next">${icon('calendar', 20)} Prochain rendez-vous : ${fmtNext(S.thanksNext).replace(/^./, (ch) => ch.toLowerCase())}</p>` : ''}
       <p class="muted">Vous pouvez rendre la tablette à votre coiffeur.</p>
     </div>
   </main>`;
@@ -1406,6 +1442,17 @@ function loginError(err) {
   return 'Connexion impossible pour l’instant. Réessayez dans quelques minutes.';
 }
 
+// Export Excel : dans « Sauvegarde » (c'en est une copie) et dans « Réglages », où on le cherche aussi.
+const viewExport = () => `
+        <section class="dlg-section" aria-labelledby="sec-export">
+          <h3 id="sec-export">Exporter pour Excel</h3>
+          <p class="muted small">Fiches clients et historique, à ouvrir dans Excel. Les fichiers arrivent dans « Téléchargements » ; les photos n’y sont pas.</p>
+          <div class="export-btns">
+            <button type="button" class="btn btn-ghost" data-action="export-clients">${icon('download', 18)} Fiches clients</button>
+            <button type="button" class="btn btn-ghost" data-action="export-visits">${icon('download', 18)} Historique des visites</button>
+          </div>
+        </section>`;
+
 function viewModal() {
   const m = S.modal;
   let body = '';
@@ -1416,15 +1463,15 @@ function viewModal() {
       <form data-form="client" class="dialog" novalidate>
         <h2 class="serif" id="dlg-title">${c.id ? 'Modifier la fiche' : 'Nouveau client'}</h2>
         <div class="grid2">
-          ${input('firstName', 'Prénom', 'text', 'data-autofocus autocomplete="off"')}
-          ${input('lastName', 'Nom', 'text', 'autocomplete="off"')}
-          ${input('phone', 'Téléphone', 'tel', 'inputmode="tel" autocomplete="off"')}
-          ${input('email', 'E-mail', 'email', 'inputmode="email" autocomplete="off"')}
+          ${input('firstName', 'Prénom', 'text', 'data-autofocus autocomplete="off" required')}
+          ${input('lastName', 'Nom (facultatif)', 'text', 'autocomplete="off"')}
+          ${input('phone', 'Téléphone', 'tel', 'inputmode="tel" autocomplete="off" required')}
+          ${input('email', 'E-mail (facultatif)', 'email', 'inputmode="email" autocomplete="off"')}
         </div>
         <label class="field">Allergies / sensibilités
           <textarea name="allergies" rows="2" placeholder="ex. Réaction à la PPD, cuir chevelu sensible">${esc(c.allergies)}</textarea>
         </label>
-        ${c.id ? '' : '<p class="muted small">Un prénom ou un téléphone suffit : le client complètera ses coordonnées lui-même.</p>'}
+        ${c.id ? '' : '<p class="muted small">Le prénom et le téléphone suffisent : le client complètera le reste lui-même.</p>'}
         <div class="dup-slot"></div>
         <div class="form-actions split-actions">
           ${c.id ? `<button type="button" class="btn btn-danger-outline btn-sm" data-action="delete-client">${icon('trash', 16)} Supprimer la fiche</button>` : ''}
@@ -1476,14 +1523,7 @@ function viewModal() {
         <h2 class="serif" id="dlg-title">Sauvegarde</h2>
         <div class="sync-state sync-${v.tone}" id="sync-state" role="status">${syncStateInner(v)}</div>
         ${online}
-        <section class="dlg-section" aria-labelledby="sec-export">
-          <h3 id="sec-export">Exporter en CSV</h3>
-          <p class="muted small">Fiches clients et historique, à ouvrir dans Excel. Les fichiers arrivent dans « Téléchargements » ; les photos n’y sont pas.</p>
-          <div class="export-btns">
-            <button type="button" class="btn btn-ghost" data-action="export-clients">${icon('download', 18)} Fiches clients</button>
-            <button type="button" class="btn btn-ghost" data-action="export-visits">${icon('download', 18)} Historique des visites</button>
-          </div>
-        </section>
+        ${viewExport()}
         <div class="form-actions"><button type="button" class="btn btn-ghost" data-action="close-modal">Fermer</button></div>
       </div>`;
   } else if (m.type === 'confirm-signout') {
@@ -1525,20 +1565,11 @@ function viewModal() {
           <p class="muted small">Le code à 4 chiffres qui protège les fiches, les formules et l’agenda. L’espace se verrouille seul après 10 minutes sans activité.</p>
           <div><button type="button" class="btn btn-ghost" data-action="change-pin" data-autofocus>${icon('key', 18)} Changer le code</button></div>
         </section>
+        ${viewExport()}
         <div class="form-actions"><button type="button" class="btn btn-ghost" data-action="close-modal">Fermer</button></div>
       </div>`;
   } else if (m.type === 'appt') {
     body = viewApptDialog(m);
-  } else if (m.type === 'confirm-appt-cancel') {
-    body = `
-      <div class="dialog dialog-sm">
-        <h2 class="serif" id="dlg-title">Annuler ce rendez-vous ?</h2>
-        <p class="muted">${esc(m.name)}, ${esc(fmtDayTitle(m.start).toLowerCase())} à ${fmtTime(m.start)}. Il disparaîtra de l’agenda.</p>
-        <div class="form-actions">
-          <button type="button" class="btn btn-ghost" data-action="keep-appt" data-autofocus>Garder</button>
-          <button type="button" class="btn btn-danger" data-action="confirm-appt-cancel">${icon('trash', 18)} Annuler le rendez-vous</button>
-        </div>
-      </div>`;
   } else if (m.type === 'confirm-delete') {
     const v = S.history.find((x) => x.id === m.visitId);
     body = `
@@ -1656,6 +1687,7 @@ async function enterCoiffeur() {
       clientId: S.handedVisit.clientId
     });
     S.handedVisit = null;
+    S.handedNext = null;
     S.checkout = null;
   }
   S.autoLocked = false;
@@ -1689,9 +1721,17 @@ function checkServices() {
   return false;
 }
 
-function handTo(visit) {
+// Prochain rendez-vous à partir de demain : celui d'aujourd'hui, c'est la visite en cours.
+async function nextVisitOf(clientId) {
+  const d = new Date();
+  const tomorrow = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).toISOString();
+  return (await db.appointmentsOf(clientId)).filter((a) => a.start >= tomorrow).sort((a, b) => a.start.localeCompare(b.start))[0] || null;
+}
+
+async function handTo(visit) {
   parkDraft(); // une visite déjà commencée pour ce client est retrouvée au retour
   const c = S.client || {};
+  S.handedNext = await nextVisitOf(visit.clientId);
   S.handedVisit = visit;
   S.checkout = { firstName: c.firstName || '', lastName: c.lastName || '', phone: fmtPhone(c.phone), email: c.email || '', consent: Boolean(c.consentAt) };
   go('client');
@@ -1846,12 +1886,13 @@ async function exportVisits() {
 
 // ---------- Formulaires ----------
 
-function validateContact(val, requireName) {
+// Prénom et téléphone obligatoires (nom et e-mail facultatifs) ; `you` : messages adressés au client.
+function validateContact(val, strict, you = true) {
   const errors = {};
-  if (requireName && !val('firstName')) errors.firstName = 'Indiquez votre prénom.';
-  if (requireName && !val('lastName')) errors.lastName = 'Indiquez votre nom.';
+  if (strict && !val('firstName')) errors.firstName = you ? 'Indiquez votre prénom.' : 'Indiquez le prénom.';
   const phone = digits(val('phone'));
-  if (val('phone') && (phone.length < 6 || phone.length > 15)) errors.phone = 'Numéro incomplet : vérifiez les chiffres.';
+  if (strict && !val('phone')) errors.phone = you ? 'Indiquez votre numéro de téléphone.' : 'Indiquez le numéro de téléphone.';
+  else if (val('phone') && (phone.length < 6 || phone.length > 15)) errors.phone = 'Numéro incomplet : vérifiez les chiffres.';
   if (val('email') && !EMAIL_RE.test(val('email'))) errors.email = 'Adresse incomplète, par exemple prenom@exemple.fr';
   return errors;
 }
@@ -1990,6 +2031,7 @@ const actions = {
     const s = el.dataset.service;
     m.services.has(s) ? m.services.delete(s) : m.services.add(s);
     m.changed = true;
+    m.lateOk = false;
     prefill(m);
     render();
     announceSpan(m, `${s} ${m.services.has(s) ? 'cochée' : 'décochée'}, durée ${core.fmtDuration(m.duration)}`);
@@ -2001,6 +2043,7 @@ const actions = {
     m.start = atMinutes(start, min).toISOString();
     m.error = '';
     m.changed = true;
+    m.lateOk = false;
     render();
     announceSpan(m, fmtMin(min));
   },
@@ -2010,6 +2053,7 @@ const actions = {
     m.durationSet = true;
     m.error = '';
     m.changed = true;
+    m.lateOk = false;
     render();
     announceSpan(m, `Durée ${core.fmtDuration(m.duration)}`);
   },
@@ -2039,19 +2083,8 @@ const actions = {
   },
   'appt-open': () => openApptClient(findAppt(S.modal.id)),
   'today-appt': (el) => openApptClient(findAppt(el.dataset.id)),
-  'appt-cancel': () => {
-    const a = findAppt(S.modal.id);
-    const back = { modal: S.modal, ret: S.modalReturn };
-    openModal({ type: 'confirm-appt-cancel', id: a.id, name: apptName(a, true), start: a.start, back });
-  },
-  // « Garder » ramène à la fenêtre du rendez-vous, telle qu'on l'avait laissée.
-  'keep-appt': () => {
-    const { modal, ret } = S.modal.back;
-    S.modal = modal;
-    S.modalReturn = ret;
-    render({ focus: '[data-action="appt-cancel"]' });
-  },
-  'confirm-appt-cancel': async () => {
+  // Pas de fenêtre de confirmation : l'annulation se défait d'un appui (« Rétablir » sous le titre).
+  'appt-cancel': async () => {
     const a = findAppt(S.modal.id);
     await db.deleteAppointment(a.id);
     await refreshAppts();
@@ -2070,6 +2103,14 @@ const actions = {
   select: async (el) => {
     await selectClient(el.dataset.id);
     render({ top: true });
+  },
+  // Le champ garde le focus : on efface pour taper autre chose.
+  'clear-search': () => {
+    S.query = '';
+    const input = app.querySelector('#search');
+    input.value = '';
+    app.querySelector('#results').innerHTML = viewResults();
+    input.focus();
   },
   'new-client': () => openModal({ type: 'client', client: { firstName: '', lastName: '', phone: '', email: '', allergies: '' } }),
   // Recherche sans résultat : la fiche part de ce qui a été tapé (numéro, ou prénom puis nom).
@@ -2165,7 +2206,7 @@ const actions = {
     await selectClient(notice.clientId);
     const visit = S.history.find((v) => v.id === notice.visitId);
     dropNotices((n) => n.visitId === notice.visitId);
-    if (visit) handTo(visit);
+    if (visit) await handTo(visit);
     else render({ top: true });
   },
   'back-to-consent': () => {
@@ -2226,12 +2267,12 @@ const actions = {
     for (const p of d.photos) await db.addPhoto(visit.id, p.blob, p.thumb);
     dropDraft(d);
     S.draft = emptyDraft();
-    handTo(visit);
+    await handTo(visit);
   },
-  rehand: (el) => {
+  rehand: async (el) => {
     const visit = S.history.find((v) => v.id === el.dataset.visit);
     if (S.draft.editId) endEdit();
-    if (visit) handTo(visit);
+    if (visit) await handTo(visit);
   },
   'edit-visit': async (el) => {
     const visit = S.history.find((v) => v.id === el.dataset.visit);
@@ -2405,8 +2446,7 @@ app.addEventListener('submit', async (e) => {
 
   if (form.dataset.form === 'client') {
     const isNew = !S.modal.client.id;
-    const errors = validateContact(val, false);
-    if (isNew && !val('firstName') && !val('lastName') && !val('phone')) errors.firstName = 'Indiquez au moins un prénom, un nom ou un téléphone.';
+    const errors = validateContact(val, true, false);
     if (showErrors(form, errors)) return;
     // Doublon probable : on le signale une fois, un second appui crée quand même la fiche.
     const dup = isNew && !S.modal.dupChecked && findDuplicate(val);
@@ -2488,6 +2528,8 @@ app.addEventListener('submit', async (e) => {
 function finishCheckout(firstName, note) {
   S.thanksName = firstName;
   S.thanksNote = note;
+  S.thanksNext = S.handedNext;
+  S.handedNext = null;
   S.handedVisit = null;
   S.checkout = null;
   S.clientId = null;
@@ -2520,7 +2562,6 @@ const TAB_KEYS = { ArrowLeft: 'toggle', ArrowRight: 'toggle', Home: 'visit', End
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     if (S.modal?.type === 'photo') actions['close-photo']();
-    else if (S.modal?.type === 'confirm-appt-cancel') actions['keep-appt']();
     else if (S.modal?.type === 'confirm-delete-client') actions['keep-client']();
     else if (S.modal) closeModal();
     else if (S.moving && S.view === 'coiffeur') actions['move-cancel']();
@@ -2554,7 +2595,6 @@ history.pushState(null, '', location.href);
 window.addEventListener('popstate', () => {
   history.pushState(null, '', location.href);
   if (S.modal?.type === 'photo') actions['close-photo']();
-  else if (S.modal?.type === 'confirm-appt-cancel') actions['keep-appt']();
   else if (S.modal?.type === 'confirm-delete-client') actions['keep-client']();
   else if (S.modal) closeModal();
 });

@@ -97,6 +97,8 @@ h2.label { font-weight: 400; }
 
 .err { min-height: 1.4em; color: var(--error); font-size: 15px; font-weight: 500; }
 .err.is-busy { color: var(--muted); }
+/* À confirmer (dépassement de 18 h) : un avertissement en or, pas une erreur. */
+.err.is-warn { color: var(--accent); }
 .err-inline:empty { display: none; }
 .field-err { display: flex; align-items: center; gap: 6px; color: var(--error); font-size: 14px; font-weight: 500; }
 .field-err:empty { display: none; }
@@ -274,6 +276,11 @@ h2.label { font-weight: 400; }
 }
 .search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .search input { flex: 1; min-width: 0; border: none; background: none; outline: none; padding: 14px 0; font-size: 16px; color: var(--text); }
+/* Notre bouton d'effacement de 44 px remplace le × du navigateur, trop petit pour le doigt. */
+.search input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; display: none; }
+.search-clear { flex-shrink: 0; width: 44px; height: 44px; margin-right: -10px; display: flex; align-items: center; justify-content: center; border: none; border-radius: 10px; background: none; color: var(--muted); }
+.search-clear:active { background: var(--panel-2); color: var(--text); }
+.search:has(input:placeholder-shown) .search-clear { display: none; }
 
 .results { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
 .result {
@@ -566,6 +573,16 @@ button.photo:active { border-color: var(--accent); }
 .done-list { list-style: none; margin: 0; padding: 0; width: 100%; display: flex; flex-direction: column; gap: 10px; }
 .done-list li { display: flex; align-items: center; gap: 14px; background: var(--panel); border-radius: 12px; padding: 16px 18px; font-size: 18px; }
 .done-list .ic { color: var(--accent); }
+/* Prochain rendez-vous du client, sous ses prestations : une date à retenir, pas une alerte. */
+.client-next { width: 100%; display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-radius: 12px; border: 1px solid var(--line-2); }
+.client-next .ic { color: var(--accent); }
+.client-next p { display: flex; flex-direction: column; gap: 2px; }
+.client-next span { font-size: 14px; color: var(--muted); }
+.client-next strong { font-size: 18px; font-weight: 600; }
+.thanks-next { display: inline-flex; align-items: center; justify-content: center; gap: 10px; color: var(--text-2); }
+.thanks-next .ic { color: var(--accent); }
+/* « Coiffeur » en bas de l'écran client en portrait ; en paysage, il reste au pied de la colonne du logo. */
+.client-exit { display: none; }
 
 .client-form { flex: 1; min-width: 0; overflow-y: auto; padding: 48px 56px; display: flex; flex-direction: column; }
 /* Centré en hauteur ; s'il déborde (clavier ouvert), les marges tombent à zéro et il défile normalement. */
@@ -726,7 +743,7 @@ button.photo:active { border-color: var(--accent); }
   /* En-tête d'accueil en colonne : logo, « Votre visite », puis les prestations du jour. */
   .client-aside { flex-direction: column; flex-wrap: nowrap; padding: 48px 32px 36px; gap: 22px; }
   .client-aside .thanks-head h1 { font-size: 50px; }
-  .client-aside .done-list { max-width: 600px; }
+  .client-aside .done-list, .client-aside .client-next { max-width: 600px; }
   .done-list li { padding: 18px 22px; font-size: 19px; }
   .client-form { padding: 40px 32px 48px; }
   .client-form form { gap: 30px; }
@@ -737,7 +754,8 @@ button.photo:active { border-color: var(--accent); }
   .consent small { font-size: 15px; }
   .client-form .form-actions-end .btn-lg { flex: 1; min-height: 68px; font-size: 19px; }
   .client { position: relative; }
-  .aside-foot { position: absolute; top: 8px; right: 8px; margin: 0; }
+  .client-aside .aside-foot { display: none; }
+  .client-exit { display: inline-flex; align-self: flex-end; margin-top: 24px; min-height: 44px; font-size: 14px; }
   .client { overflow-y: auto; }
   .logo-xl { width: 300px; }
 }
@@ -850,6 +868,9 @@ button.photo:active { border-color: var(--accent); }
 .appt-block.past .appt-sub { color: var(--muted); }
 .appt-block.live { box-shadow: inset 0 0 0 1.5px var(--accent); }
 .appt-block.moving { outline: 2px dashed var(--accent); outline-offset: 1px; }
+/* Rendez-vous qui finit après 18 h : coupé à la fermeture, bas en pointillés, l'heure de fin écrite. */
+.appt-block.late { border-bottom: 2px dashed var(--accent); border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.appt-sub.appt-end { color: var(--accent); }
 /* Un quart d'heure : le prénom seul, centré, sans être rogné. */
 .appt-block.short { justify-content: center; padding-block: 0; }
 .appt-block.short .appt-name { font-size: 12px; line-height: 1.1; }
@@ -880,6 +901,7 @@ button.photo:active { border-color: var(--accent); }
 /* Fin et place libre, sous l'heure ; en corail dès que ça ne tient plus (sans triangle : il est à l'allergie). */
 .appt-span { margin-top: -6px; font-size: 15px; color: var(--text-2); text-align: right; }
 .appt-span.over { color: var(--error); font-weight: 600; }
+.appt-span.late { color: var(--accent); font-weight: 600; }
 .stepper { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .stepper .label { min-width: 70px; }
 .step-value { min-width: 84px; text-align: center; font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; }

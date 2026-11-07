@@ -8,7 +8,7 @@ Maquettes : https://claude.ai/artifact/4HnJfspaKf4fw7f9TrdCSM
 1. **Espace coiffeur** (protégé par PIN 4 chiffres) : rechercher un client (téléphone ou nom) ou en créer un,
    cocher les prestations du jour, formule couleur, note interne, photos.
 2. **Passer la tablette** : la visite est enregistrée dès ce moment.
-3. **Écran client** : vérifie ses prestations, complète prénom / nom / téléphone / e-mail (facultatif),
+3. **Écran client** : vérifie ses prestations, complète prénom et téléphone (obligatoires), nom et e-mail (facultatifs),
    coche le consentement RGPD, valide. Retour auto à l'accueil après 2 min d'inactivité.
    Revenir à l'espace coiffeur exige le PIN.
 4. **Agenda** (espace coiffeur, bouton « Agenda ») : semaine du lundi au samedi, 8 h 30 – 18 h. Un appui sur un créneau libre
@@ -18,7 +18,7 @@ Maquettes : https://claude.ai/artifact/4HnJfspaKf4fw7f9TrdCSM
 
 ## Règles
 - Un seul coiffeur pour l'instant (pas de choix de coiffeur).
-- Une fiche par personne ; le téléphone est facultatif et peut être partagé (parent/enfant).
+- Une fiche par personne ; prénom et téléphone obligatoires sur la fiche et à la validation du client (une fiche créée depuis l'agenda peut n'avoir que le prénom, le client complète) ; le téléphone peut être partagé (parent/enfant).
 - Pas de prix, pas d'avis/étoiles, pas d'envoi de messages en v1.
 - Prestations : Coupe & coiffage, Coloration, Lissage, Soin, Barbe, Massage, Visagiste, Diagnostic.
 - Formule couleur : marque, nuance, oxydant, temps de pose + « reprendre la dernière formule ».
@@ -28,7 +28,7 @@ Maquettes : https://claude.ai/artifact/4HnJfspaKf4fw7f9TrdCSM
   après confirmation, la fiche du client, ses visites et ses photos sont effacées.
 - Code PIN oublié : code de déblocage à 8 chiffres, connu de la seule personne qui a installé l'appli ; il permet de choisir un nouveau PIN.
 - Historique : le coiffeur peut **modifier ou supprimer** une visite passée.
-- Rendez-vous : pas de chevauchement, fin à 18 h au plus tard. Un rendez-vous garde une copie du prénom et du téléphone.
+- Rendez-vous : pas de chevauchement ; fin à 18 h en principe, mais le coiffeur peut forcer un dépassement (l'appli prévient, il confirme). Un rendez-vous garde une copie du prénom et du téléphone.
   Sans accord RGPD, il reste sur la tablette ; si le client refuse l'accord, ses rendez-vous passés sont effacés
   et ceux à venir restent sur la tablette seulement, puis en sont effacés une fois leur jour passé.
 
