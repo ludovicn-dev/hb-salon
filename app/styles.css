@@ -23,6 +23,9 @@
   --t-press: 120ms; /* retour au toucher */
   --t-dialog: 220ms; /* arrivée d'une fenêtre */
   --t-flash: 1800ms; /* rendez-vous qui vient d'être noté ou déplacé */
+  --t-arrive: 900ms; /* apparition lente de Bienvenue et Merci */
+  --halo: color-mix(in srgb, var(--panel-2) 60%, var(--bg)); /* lumière douce derrière le logo */
+  --glow: color-mix(in srgb, var(--panel) 70%, var(--bg)); /* haut de la colonne du logo, écran client */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   color-scheme: dark;
 }
@@ -160,8 +163,27 @@ h2.label { font-weight: 400; }
   position: relative;
   padding: 24px;
   text-align: center;
+  /* Une lumière douce derrière le logo : l'écran que le client voit en premier n'est plus un aplat. */
+  background: radial-gradient(ellipse 55% 50% at 50% 42%, var(--halo), var(--bg) 72%);
 }
 .welcome h1 { font-size: 56px; line-height: 1.15; }
+/* Filet d'or sous le titre, en écho à l'ovale du logo. */
+.welcome > h1::after, .thanks-text h1::after {
+  content: '';
+  display: block;
+  width: 72px;
+  height: 1px;
+  margin: 22px auto 0;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+}
+/* Apparition lente à l'arrivée sur l'écran (classe posée par render), jamais quand il est seulement redessiné. */
+.welcome.enter > .logo { animation: soft-in var(--t-arrive) var(--ease-out) both; }
+.welcome.enter > h1, .welcome.enter > .thanks-text { animation: soft-in var(--t-arrive) calc(var(--t-arrive) / 4) var(--ease-out) both; }
+@keyframes soft-in { from { opacity: 0; transform: translateY(6px); } }
+@media (prefers-reduced-motion: reduce) {
+  .welcome.enter > .logo, .welcome.enter > h1, .welcome.enter > .thanks-text { animation-duration: var(--t-dialog); animation-delay: 0s; }
+  @keyframes soft-in { from { opacity: 0; } }
+}
 .thanks-text { display: flex; flex-direction: column; gap: 14px; }
 .thanks-text p { font-size: 18px; }
 .corner { position: absolute; right: 24px; bottom: 24px; color: var(--muted); }
@@ -515,6 +537,7 @@ button.photo:active { border-color: var(--accent); }
   align-items: center;
   gap: 28px;
   overflow-y: auto;
+  background: linear-gradient(180deg, var(--glow), var(--bg) 85%);
 }
 .thanks-head { text-align: center; display: flex; flex-direction: column; gap: 8px; }
 .thanks-head h1 { font-size: 44px; line-height: 1.1; }
@@ -522,8 +545,9 @@ button.photo:active { border-color: var(--accent); }
 .done-list li { display: flex; align-items: center; gap: 14px; background: var(--panel); border-radius: 12px; padding: 16px 18px; font-size: 18px; }
 .done-list .ic { color: var(--accent); }
 
-.client-form { flex: 1; min-width: 0; overflow-y: auto; padding: 48px 56px; }
-.client-form form { display: flex; flex-direction: column; gap: 22px; max-width: 760px; }
+.client-form { flex: 1; min-width: 0; overflow-y: auto; padding: 48px 56px; display: flex; flex-direction: column; }
+/* Centré en hauteur ; s'il déborde (clavier ouvert), les marges tombent à zéro et il défile normalement. */
+.client-form form { display: flex; flex-direction: column; gap: 22px; max-width: 760px; margin-block: auto; }
 .form-head { display: flex; flex-direction: column; gap: 6px; }
 .client-form h2 { font-size: 40px; line-height: 1.1; }
 .form-head p { font-size: 16px; }
@@ -665,7 +689,7 @@ button.photo:active { border-color: var(--accent); }
   .client-aside { width: auto; border-right: none; border-bottom: 1px solid var(--line); padding: 28px; flex-direction: row; flex-wrap: wrap; justify-content: center; overflow: visible; }
   .client-aside .logo-lg { width: 200px; }
   .client-form { padding: 28px; overflow: visible; }
-  .client-form form { min-height: 0; }
+  .client-form form { min-height: 0; margin-block: 0; } /* en portrait, le formulaire suit l'en-tête, sans vide au-dessus */
   .client-form h2 { font-size: 34px; }
   .client { position: relative; }
   .aside-foot { position: absolute; top: 8px; right: 8px; margin: 0; }
@@ -801,8 +825,9 @@ button.photo:active { border-color: var(--accent); }
 .keyboard-btn { min-width: 150px; } /* même largeur pour « Clavier lettres » et « Clavier chiffres » : le champ ne bouge pas */
 .appt-who { display: flex; flex-direction: column; gap: 10px; }
 .appt-who:empty { display: none; }
-.chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.chip {
+/* Choix de fiche : de vrais boutons, distincts des étiquettes de prestations de l'historique. */
+.appt-who .chips { gap: 8px; }
+.appt-who .chip {
   display: inline-flex;
   flex-direction: column;
   align-items: flex-start;
@@ -816,10 +841,10 @@ button.photo:active { border-color: var(--accent); }
   font-weight: 600;
   text-align: left;
 }
-.chip small { font-size: 13px; font-weight: 500; color: var(--muted); }
-.chip:active { background: var(--panel-2); }
-.chip[aria-pressed='true'] { background: var(--panel-2); border: 1.5px solid var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
-.chip-add { flex-direction: row; align-items: center; gap: 6px; border-style: dashed; color: var(--accent); }
+.appt-who .chip small { font-size: 13px; font-weight: 500; color: var(--muted); }
+.appt-who .chip:active { background: var(--panel-2); }
+.appt-who .chip[aria-pressed='true'] { background: var(--panel-2); border: 1.5px solid var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.appt-who .chip-add { flex-direction: row; align-items: center; gap: 6px; border-style: dashed; color: var(--accent); }
 .appt-person { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 19px; }
 .appt-person .appt-open { margin-left: auto; }
 .services-compact { gap: 8px; }
@@ -849,13 +874,15 @@ button.photo:active { border-color: var(--accent); }
 .today-row.past { background: transparent; }
 .today-row.past .today-time, .today-row.past .today-who strong { color: var(--muted); }
 .today-row.next { border: 1.5px solid var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
-.today-time { width: 72px; flex-shrink: 0; font-size: 17px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+.today-time { width: 72px; flex-shrink: 0; font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* L'or seulement pour le rendez-vous en cours ou le prochain : il redevient un signal. */
+.today-row.next .today-time { color: var(--accent); }
 .today-who { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .today-who strong { font-size: 17px; }
 .today-who span { color: var(--muted); font-size: 14px; }
 .today-allergy { display: inline-flex; align-items: center; gap: 6px; color: var(--error); font-weight: 700; font-size: 14px; }
 .today-live { display: inline-flex; align-items: center; gap: 6px; color: var(--accent); font-weight: 700; font-size: 14px; }
 .last-color { margin-top: 4px; color: var(--text-2); font-size: 15px; }
-.next-appt { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; color: var(--text-2); font-size: 15px; }
-.next-appt .ic { color: var(--accent); }
-.next-appt .link { margin-left: 4px; }
+.next-appt { display: flex; align-items: center; flex-wrap: wrap; gap: 0 12px; color: var(--text-2); font-size: 15px; }
+/* Icône dans le fil du texte : en portrait, elle ne reste pas seule sur sa ligne. */
+.next-appt .ic { color: var(--accent); vertical-align: -2px; margin-right: 4px; }

@@ -93,7 +93,7 @@ const fmtDay = (iso) => new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month
 const fmtDayShort = (iso) => new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' }).format(new Date(iso));
 const fmtDateMid = (iso) => new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(iso));
 const fmtDateLong = (iso) => cap(fmtDateMid(iso));
-const fmtTime = (iso) => new Intl.DateTimeFormat('fr-FR', { hour: 'numeric', minute: '2-digit' }).format(new Date(iso)).replace(':', ' h ');
+const fmtTime = (iso) => new Intl.DateTimeFormat('fr-FR', { hour: 'numeric', minute: '2-digit' }).format(new Date(iso)).replace(':', ' h ');
 const fmtClock = () => fmtTime(new Date().toISOString());
 
 function ago(iso) {
@@ -334,6 +334,8 @@ function render({ top = false, focus = null } = {}) {
   // Fondu d'arrivée seulement à l'ouverture d'une fenêtre, pas quand on la redessine (erreur, état de la sauvegarde…).
   if (S.modal && S.modal.type !== app.dataset.modal) app.querySelector(':scope > .overlay')?.classList.add('enter');
   app.dataset.modal = S.modal?.type || '';
+  // Bienvenue / Merci : apparition lente à l'arrivée seulement, pas quand l'écran est redessiné (sauvegarde…).
+  if (!same) app.querySelector(':scope > .welcome')?.classList.add('enter');
 
   if (scrolls) {
     SCROLLERS.forEach((sel, i) => {
@@ -799,7 +801,7 @@ const pct = (min) => `${(((min - core.OPEN_MIN) / OPEN_SPAN) * 100).toFixed(3)}%
 const span = (min) => `${((min / OPEN_SPAN) * 100).toFixed(3)}%`;
 const addDays = (date, n) => new Date(date.getFullYear(), date.getMonth(), date.getDate() + n);
 const atMinutes = (day, min) => new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, min);
-const fmtMin = (min) => `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')}`;
+const fmtMin = (min) => `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')}`;
 const hourLabel = (min) => (min % 60 ? fmtMin(min) : `${min / 60} h`);
 
 // Le nom actuel de la fiche (complété par le client entre-temps) ; la copie du rendez-vous sinon.
@@ -1087,7 +1089,7 @@ function lastColorLine() {
 function nextApptLine() {
   const a = S.nextAppt;
   if (!a) return '';
-  return `<p class="next-appt">${icon('calendar', 16)}<span>Prochain rendez-vous : ${fmtDayTitle(a.start).toLowerCase()} à ${fmtTime(a.start)}</span>
+  return `<p class="next-appt"><span>${icon('calendar', 16)} Prochain rendez-vous : ${fmtDayTitle(a.start).toLowerCase()} à ${fmtTime(a.start)}</span>
     <button type="button" class="link" data-action="show-appt" data-id="${a.id}">Voir dans l’agenda</button></p>`;
 }
 
@@ -1207,7 +1209,7 @@ function viewDraft() {
         d.editId
           ? `<button type="button" class="btn btn-accent btn-lg" data-action="save-edit">${icon('check', 20)} Enregistrer les modifications</button>`
           : waiting
-            ? `<button type="button" class="btn btn-ghost btn-lg" data-action="handover">Nouvelle visite : passer la tablette ${icon('arrow', 20)}</button>`
+            ? `<button type="button" class="btn btn-ghost btn-lg" data-action="handover">Nouvelle visite : passer la tablette ${icon('arrow', 20)}</button>`
             : `<button type="button" class="btn btn-accent btn-lg" data-action="handover">Passer la tablette au client ${icon('arrow', 20)}</button>`
       }
     </div>
@@ -1464,7 +1466,7 @@ function viewModal() {
   } else if (m.type === 'confirm-appt-cancel') {
     body = `
       <div class="dialog dialog-sm">
-        <h2 class="serif" id="dlg-title">Annuler ce rendez-vous ?</h2>
+        <h2 class="serif" id="dlg-title">Annuler ce rendez-vous ?</h2>
         <p class="muted">${esc(m.name)}, ${esc(fmtDayTitle(m.start).toLowerCase())} à ${fmtTime(m.start)}. Il disparaîtra de l’agenda.</p>
         <div class="form-actions">
           <button type="button" class="btn btn-ghost" data-action="keep-appt" data-autofocus>Garder</button>
