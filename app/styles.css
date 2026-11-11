@@ -38,6 +38,7 @@
   --appt-bg-press: color-mix(in srgb, var(--panel-2) 62%, var(--accent));
   --grid-line: color-mix(in srgb, var(--line-2) 45%, var(--panel));
   --past-hatch: color-mix(in srgb, var(--line-2) 30%, var(--bg));
+  --half-h: 60px; /* une demi-heure du planning du jour */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   color-scheme: dark;
 }
@@ -361,7 +362,7 @@ h2.label { font-weight: 400; }
 .done-line .ic { flex-shrink: 0; color: var(--accent); }
 .done-line strong { color: var(--text); font-weight: 600; }
 .empty .done-line { margin-bottom: 18px; }
-.today-list .done-line { align-self: flex-start; margin-bottom: 10px; }
+.today-plan .done-line { align-self: flex-start; margin-bottom: 10px; }
 
 .client-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
 .client-head h1 { font-size: clamp(30px, 3.2vw, 38px); line-height: 1.1; }
@@ -1015,37 +1016,25 @@ button.photo:active { border-color: var(--accent); }
   .services-compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
-/* Rendez-vous du jour (accueil de l'espace coiffeur) */
-.today-list { display: flex; flex-direction: column; gap: 8px; padding-bottom: 24px; }
-.today-list h1 { font-size: 40px; }
-.today-rows { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
-.today-row {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  min-height: 64px;
-  padding: 12px 18px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--panel);
-  text-align: left;
-}
-.today-row:active { background: var(--panel-2); }
-.today-row.past { background: transparent; }
-.today-row.past .today-time, .today-row.past .today-who strong { color: var(--muted); }
-.today-row.next { border-color: var(--accent); box-shadow: inset 0 0 0 1.5px var(--accent); }
-.today-time { width: 72px; flex-shrink: 0; font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
-/* L'or seulement pour le rendez-vous en cours ou le prochain : il redevient un signal. */
-.today-row.next .today-time { color: var(--accent); }
-.today-who { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.today-who strong { font-size: 17px; }
-.today-who span { color: var(--muted); font-size: 14px; }
+/* Planning du jour (accueil de l'espace coiffeur) : la journée en une colonne large, qui défile. */
+.today-plan { display: flex; flex-direction: column; gap: 8px; padding-bottom: 24px; }
+.today-plan .agenda-head h1 { font-size: 40px; }
+.today-plan .agenda-title > .muted { margin: 2px 0 0; }
+.today-plan .next-appt { align-self: flex-start; }
+.day-plan { flex-shrink: 0; display: grid; grid-template-columns: 48px minmax(0, 1fr); column-gap: 6px; height: calc(var(--half-h) * 19); margin-top: 8px; }
+.hour.half { font-size: 12px; opacity: 0.8; }
+.today-block { gap: 2px; padding: 6px 12px; font-size: 15px; }
+.today-block.next { box-shadow: inset 0 0 0 1.5px var(--accent); }
+.today-block.short { padding-block: 0; }
+.today-line { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; font-weight: 700; }
+.today-line .appt-n { flex: 0 1 auto; }
+.today-tags { display: flex; align-items: center; gap: 14px; flex-shrink: 0; margin-left: auto; font-weight: 600; }
 .today-allergy { display: inline-flex; align-items: center; gap: 6px; color: var(--error); font-weight: 700; font-size: 14px; }
 /* État de la visite sur la ligne du jour : validée (coche or), ou rendez-vous passé sans visite notée. */
 .today-state { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); font-weight: 600; font-size: 14px; white-space: nowrap; }
 .today-state .ic { color: var(--accent); }
 .today-state.is-none { color: var(--muted); font-weight: 500; }
-.today-row .tag-pending { flex-shrink: 0; padding: 4px 10px; white-space: nowrap; }
+.today-tags .tag-pending { flex-shrink: 0; padding: 4px 10px; white-space: nowrap; }
 .today-live { display: inline-flex; align-items: center; gap: 6px; color: var(--accent); font-weight: 700; font-size: 14px; }
 
 /* ---------- Clavier ouvert en paysage ---------- */

@@ -467,7 +467,7 @@ function viewCoiffeur() {
         <div id="results" class="results">${viewResults()}</div>
         <button type="button" class="btn-new" data-action="new-client">${icon('plus', 18)} Nouveau client</button>
       </aside>
-      <main class="detail">${viewNotices()}${S.client ? viewClientDetail() : viewEmpty()}</main>
+      <main class="detail">${viewNotices()}${S.client ? viewClientDetail() : viewTodayPlan()}</main>
     </div>`
     }
   </div>`;
@@ -991,18 +991,22 @@ function viewDayColumn(day, appts, now, today = null) {
     const allergy = apptAllergy(a);
     const vis = shown(a);
     const late = vis < a.duration;
+    const v = today ? visitOf(a) : null;
     const label = [
       `${apptName(a, true)}, ${dayName}, ${fmtTime(a.start)} à ${fmtTime(end.toISOString())}`,
       a.services.join(', '),
       allergy ? 'allergie' : '',
-      done ? 'terminé' : live ? 'en cours' : ''
+      done ? 'terminé' : live ? 'en cours' : '',
+      today ? visitWords(a, v, done, today.next) : ''
     ]
       .filter(Boolean)
       .join(', ');
     const cls = [
       'appt-block',
-      done && 'past',
+      today && 'today-block',
+      (done || v?.status === 'done') && 'past',
       live && 'live',
+      today && a.id === today.next && 'next',
       vis < core.SLOT_MIN && 'short',
       late && 'late',
       S.moving?.id === a.id && 'moving',
@@ -1010,15 +1014,30 @@ function viewDayColumn(day, appts, now, today = null) {
     ]
       .filter(Boolean)
       .join(' ');
+    const startMin = core.minutesOf(start);
+    const svc = a.services.length ? shortServices(a) : '';
+    const style = `top:${pct(startMin)};height:${span(vis)};left:calc(${(lane / n) * 100}% + 2px);width:calc(${100 / n}% - 4px)${reach(startMin, startMin + vis)}`;
+    if (today) {
+      // Planning du jour : le nom complet et l'état de la visite sur la première ligne, le détail
+      // (prestations, durée, fin) dessous dès que le bloc a la hauteur de deux lignes.
+      const tall = vis >= core.SLOT_MIN;
+      const info = [a.services.join(', '), `${core.fmtDuration(a.duration)}, jusqu’à ${fmtTime(end.toISOString())}`].filter(Boolean).join(SEP);
+      items.push({
+        min: startMin,
+        html: `<button type="button" class="${cls}" style="${style}" data-action="today-appt" data-id="${a.id}" aria-label="${esc(label)}">
+        <span class="today-line"><span class="appt-time">${hourLabel(startMin)}</span><span class="appt-n">${esc(apptName(a, true))}</span>${svc && !tall ? `<span class="appt-svc">${esc(svc)}</span>` : ''}<span class="today-tags">${allergy ? `<span class="today-allergy">${icon('alert', 16)} Allergie</span>` : ''}${visitTag(v, done, live)}</span></span>
+        ${tall ? `<span class="appt-sub">${esc(info)}</span>` : ''}
+      </button>`
+      });
+      continue;
+    }
     // Chaque bloc se lit comme une ligne de carnet : l'heure, le prénom, puis la prestation, sur la
     // ligne du dessous quand le bloc est assez haut, sinon à la suite du prénom.
-    const startMin = core.minutesOf(start);
     const tall = vis >= (late ? 60 : 45);
-    const svc = a.services.length ? shortServices(a) : '';
     items.push({
       min: startMin,
       html: `<button type="button" class="${cls}"
-        style="top:${pct(startMin)};height:${span(vis)};left:calc(${(lane / n) * 100}% + 2px);width:calc(${100 / n}% - 4px)${reach(startMin, startMin + vis)}"
+        style="${style}"
         data-action="appt" data-id="${a.id}" aria-label="${esc(label)}">
         <span class="appt-name">${allergy ? icon('alert', 14) : ''}<span class="appt-time">${hourLabel(startMin)}</span><span class="appt-n">${esc(apptName(a))}</span>${svc && !tall && vis >= core.SLOT_MIN ? `<span class="appt-svc">${esc(svc)}</span>` : ''}</span>
         ${svc && tall ? `<span class="appt-sub">${esc(svc)}</span>` : ''}
@@ -1032,16 +1051,18 @@ function viewDayColumn(day, appts, now, today = null) {
     ${veil}${lines.join('')}${items.map((x) => x.html).join('')}${nowLine}</div>`;
 }
 
+const HINT_SLOT = 'Touchez un créneau libre pour noter un rendez-vous.';
+
 // Ligne sous le titre de la semaine : consigne, message du déplacement en cours, ou dernier message.
 // Elle garde la même hauteur ; le bouton qui l'accompagne se range avec la navigation des semaines.
-function viewAgendaLine(pastWeek) {
+function viewAgendaLine(hint) {
   if (S.moving) {
     return S.moving.error
       ? `<p class="agenda-line is-error">${esc(S.moving.error)}</p>`
       : `<p class="agenda-line is-move">${icon('move', 18)}<span>Touchez le nouveau créneau de <strong>${esc(S.moving.name)}</strong> (prévu ${esc(S.moving.from)}).</span></p>`;
   }
   if (S.note) return `<p class="agenda-line is-note">${icon('check', 18)}<span title="${esc(S.note.text)}">${esc(S.note.text)}</span></p>`;
-  return `<p class="agenda-line muted">${pastWeek ? 'Semaine passée : consultation seulement.' : 'Touchez un créneau libre pour noter un rendez-vous.'}</p>`;
+  return `<p class="agenda-line muted">${hint}</p>`;
 }
 
 // Repères d'heures de la colonne de gauche (les demi-heures en plus pour le planning du jour).
@@ -1070,7 +1091,7 @@ function viewAgenda() {
   <div class="agenda-head">
     <div class="agenda-title">
       <h1 class="serif">${core.weekLabel(S.week)}</h1>
-      ${viewAgendaLine(pastWeek)}
+      ${viewAgendaLine(pastWeek ? 'Semaine passée : consultation seulement.' : HINT_SLOT)}
     </div>
     <div class="week-nav">
       ${extra}
@@ -1161,60 +1182,55 @@ const viewValidated = () =>
     ? `<p class="done-line">${icon('check', 18)}<span><strong>${esc(S.validated.name)}</strong> a validé sa fiche à ${fmtTime(S.validated.at)}.</span></p>`
     : '';
 
-// À l'ouverture : les rendez-vous du jour (terminés grisés, le prochain entouré d'or).
-function viewEmpty() {
+// Visite du jour du client d'un rendez-vous (celle « à valider » d'abord, sinon la dernière validée).
+const visitOf = (a) => (a.clientId ? S.todayVisits.get(a.clientId) : null);
+
+// État de la visite sur un rendez-vous du jour : à valider, validée, oubliée, ou en cours.
+function visitTag(v, done, live) {
+  if (v?.status === 'pending') return `<span class="tag tag-pending">${icon('clock', 13)} À valider</span>`;
+  if (v) return `<span class="today-state">${icon('check', 16)} Validée${v.validatedAt ? ` à ${fmtTime(v.validatedAt)}` : ''}</span>`;
+  if (done) return '<span class="today-state is-none">Pas de visite notée</span>';
+  return live ? `<span class="today-live">${icon('clock', 16)} En cours</span>` : '';
+}
+const visitWords = (a, v, done, next) =>
+  v?.status === 'pending' ? 'visite à valider' : v ? 'visite validée' : done ? 'pas de visite notée' : a.id === next ? 'prochain rendez-vous' : '';
+
+// Accueil de l'espace coiffeur : la journée en planning (terminés grisés, le prochain entouré d'or) ;
+// un créneau libre note un rendez-vous, un rendez-vous ouvre la fiche du client.
+function viewTodayPlan() {
   const now = new Date();
-  const list = [...S.todayAppts].sort((a, b) => a.start.localeCompare(b.start));
-  if (!list.length) {
-    const u = S.upcoming;
+  const u = S.upcoming;
+  const nextLink = u
+    ? `<button type="button" class="link next-appt" data-action="show-appt" data-id="${u.id}">${icon('calendar', 16)}<span>Prochain rendez-vous : ${fmtDayTitle(u.start).toLowerCase()} à ${fmtTime(u.start)}, ${esc(apptName(u))}</span></button>`
+    : '';
+  if (!core.isOpenDay(now)) {
     return `
   <div class="empty">
     ${viewValidated()}
-    <h1 class="serif">Aucun rendez-vous aujourd’hui</h1>
-    <p class="muted">Recherchez la fiche du prochain client à gauche, ou créez-en une nouvelle avec « Nouveau client ».</p>
-    ${
-      u
-        ? `<button type="button" class="link next-appt" data-action="show-appt" data-id="${u.id}">${icon('calendar', 16)}<span>Prochain rendez-vous : ${fmtDayTitle(u.start).toLowerCase()} à ${fmtTime(u.start)}, ${esc(apptName(u))}</span></button>`
-        : `<button type="button" class="link" data-action="space" data-space="agenda">${icon('calendar', 16)} Ouvrir l’agenda</button>`
-    }
+    <h1 class="serif">Salon fermé aujourd’hui</h1>
+    ${nextLink || `<button type="button" class="link" data-action="space" data-space="agenda">${icon('calendar', 16)} Ouvrir l’agenda</button>`}
   </div>`;
   }
-  // Liste du jour = liste de contrôle : chaque ligne dit où en est la visite ; l'or va au premier client pas encore fait.
-  const visitOf = (a) => (a.clientId ? S.todayVisits.get(a.clientId) : null);
+  const list = S.todayAppts;
   const next = core.nextOfDay(list.filter((a) => visitOf(a)?.status !== 'done'), now);
   const n = list.length;
+  const over = core.minutesOf(now) >= core.CLOSE_MIN;
+  const day = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   return `
-  <div class="today-list">
+  <div class="today-plan">
     ${viewValidated()}
-    <h1 class="serif">Aujourd’hui</h1>
-    <p class="muted">${fmtDayTitle(now.toISOString())}${SEP}${n} rendez-vous</p>
-    <div class="today-rows">
-      ${list
-        .map((a) => {
-          const end = core.endOf(a);
-          const done = end <= now;
-          const live = !done && new Date(a.start) <= now;
-          const info = [a.services.join(', '), `${core.fmtDuration(a.duration)}, jusqu’à ${fmtTime(end.toISOString())}`].filter(Boolean).join(SEP);
-          const v = visitOf(a);
-          const state = done ? 'terminé' : live ? 'en cours' : a.id === next ? 'prochain rendez-vous' : '';
-          const visit =
-            v?.status === 'pending'
-              ? `<span class="tag tag-pending">${icon('clock', 13)} À valider</span>`
-              : v
-                ? `<span class="today-state">${icon('check', 16)} Validée${v.validatedAt ? ` à ${fmtTime(v.validatedAt)}` : ''}</span>`
-                : done
-                  ? '<span class="today-state is-none">Pas de visite notée</span>'
-                  : '';
-          const shown = !visit && live; // « En cours » est écrit : inutile de le redire au lecteur d'écran
-          return `<button type="button" class="today-row${done || v?.status === 'done' ? ' past' : ''}${a.id === next ? ' next' : ''}" data-action="today-appt" data-id="${a.id}">
-            <span class="today-time">${fmtTime(a.start)}</span>
-            <span class="today-who"><strong>${esc(apptName(a, true))}</strong><span>${esc(info)}</span></span>
-            ${visit || (live ? `<span class="today-live">${icon('clock', 16)} En cours</span>` : '')}
-            ${apptAllergy(a) ? `<span class="today-allergy">${icon('alert', 16)} Allergie</span>` : ''}
-            ${state && !shown ? `<span class="sr-only">, ${state}</span>` : ''}
-          </button>`;
-        })
-        .join('')}
+    <div class="agenda-head">
+      <div class="agenda-title">
+        <h1 class="serif">Aujourd’hui</h1>
+        <p class="muted">${fmtDayTitle(now.toISOString())}${SEP}${n ? `${n} rendez-vous` : 'aucun rendez-vous'}</p>
+        ${viewAgendaLine(over ? 'Journée terminée.' : HINT_SLOT)}
+      </div>
+      ${S.note?.undo ? `<div class="week-nav"><button type="button" class="btn btn-ghost" data-action="undo">${icon('undo', 18)} ${S.note.undo.label}</button></div>` : ''}
+    </div>
+    ${n ? '' : nextLink}
+    <div class="day-plan">
+      <div class="hours" aria-hidden="true">${hourMarks(true)}</div>
+      ${viewDayColumn(day, list, now, { next })}
     </div>
   </div>`;
 }
