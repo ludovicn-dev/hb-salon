@@ -1,7 +1,8 @@
 """Icônes de l'appli à partir du vrai logo détouré.
 
 Usage : python -I tools/icones.py <logo.png> app/icons   (PNG du logo, fond transparent ; voir tools/logo-vectoriel.py)
-Fond bleu nuit ; logo à 86 % de la largeur (icônes ordinaires) ou 68 % (maskable : l'ovale
+Couleurs du thème par défaut, Barbier : logo rendu avec son dégradé (--logo-1 #ebb985 en haut, --logo-2 #b8743a
+en bas), fond brun (--bg #181513) ; logo à 86 % de la largeur (icônes ordinaires) ou 68 % (maskable : l'ovale
 tient dans le cercle de 80 % que le téléphone peut garder en découpant l'icône).
 """
 import sys
@@ -10,7 +11,7 @@ from PIL import Image
 
 src, out = sys.argv[1], Path(sys.argv[2])
 logo = Image.open(src).convert('RGBA')
-BG = (0x16, 0x1D, 0x33, 255)
+BG = (0x18, 0x15, 0x13, 255)  # --bg de Barbier
 
 
 def icon(size, ratio):

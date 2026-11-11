@@ -3,14 +3,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { THEMES, DEFAULT_THEME } from '../app/themes.js';
+import { THEMES, DEFAULT_THEME, BASE_THEME } from '../app/themes.js';
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
 const STYLES = read('../app/styles.css');
 const THEMES_CSS = read('../app/themes.css');
 
-const selectorOf = (id) => (id === DEFAULT_THEME ? `:root, [data-theme="${id}"]` : `[data-theme="${id}"]`);
-const sourceOf = (id) => (id === DEFAULT_THEME ? STYLES : THEMES_CSS);
+const selectorOf = (id) => (id === BASE_THEME ? `:root, [data-theme="${id}"]` : `[data-theme="${id}"]`);
+const sourceOf = (id) => (id === BASE_THEME ? STYLES : THEMES_CSS);
 
 // Déclarations « --nom: valeur; » du bloc dont le sélecteur est exactement `selector`, ou null sans bloc.
 function tokensOf(css, selector) {
@@ -35,7 +35,7 @@ const ratio = (a, b) => {
 
 // Couleurs d'un thème : Élégance, puis le bloc du thème par-dessus ; --appt-bg dérivé comme dans styles.css.
 function paletteOf(id) {
-  const t = { ...tokensOf(STYLES, selectorOf(DEFAULT_THEME)), ...tokensOf(sourceOf(id), selectorOf(id)) };
+  const t = { ...tokensOf(STYLES, selectorOf(BASE_THEME)), ...tokensOf(sourceOf(id), selectorOf(id)) };
   if (!t['--appt-bg']) t['--appt-bg'] = mix(t['--panel-2'], t['--line-2'], 0.25);
   return t;
 }
@@ -68,6 +68,18 @@ const PAIRS = [
 test('la liste commence par le thème par défaut, sans doublon', () => {
   assert.equal(THEMES[0].id, DEFAULT_THEME);
   assert.equal(new Set(THEMES.map((t) => t.id)).size, THEMES.length);
+});
+
+// Le thème par défaut vaut dès le premier affichage : posé sur <html>, et ses couleurs dans la barre
+// d'Android et le manifeste (fond peint par Android au lancement, sous le clavier).
+test('le thème par défaut est posé d’office, couleurs comprises', () => {
+  const html = readFileSync(new URL('../app/index.html', import.meta.url), 'utf8');
+  const manifest = JSON.parse(readFileSync(new URL('../app/manifest.webmanifest', import.meta.url), 'utf8'));
+  const bg = paletteOf(DEFAULT_THEME)['--bg'].toLowerCase();
+  assert.match(html, new RegExp(`<html[^>]*data-theme="${DEFAULT_THEME}"`));
+  assert.equal(html.match(/name="theme-color" content="([^"]+)"/)[1].toLowerCase(), bg);
+  assert.equal(manifest.background_color.toLowerCase(), bg);
+  assert.equal(manifest.theme_color.toLowerCase(), bg);
 });
 
 test('chaque thème de THEMES a son bloc', () => {

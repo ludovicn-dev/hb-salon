@@ -1,11 +1,14 @@
-// Thèmes proposés dans les Réglages, dans l'ordre des vignettes. Les couleurs vivent en CSS :
-// Élégance dans styles.css (:root), les autres dans themes.css, un bloc [data-theme="…"] chacun.
-export const DEFAULT_THEME = 'elegance';
+// Thèmes proposés dans les Réglages, dans l'ordre des vignettes (le thème par défaut en tête). Les couleurs
+// vivent en CSS : Élégance dans styles.css (:root, base des jetons que les autres thèmes ne redonnent pas),
+// les autres dans themes.css, un bloc [data-theme="…"] chacun. Le thème par défaut, Barbier, est posé
+// d'office sur <html data-theme> dans index.html : il vaut dès le premier affichage, sans choix gardé.
+export const DEFAULT_THEME = 'barbier';
+export const BASE_THEME = 'elegance';
 
 export const THEMES = [
+  { id: 'barbier', name: 'Barbier' },
   { id: 'elegance', name: 'Élégance' },
   { id: 'jour', name: 'Élégance jour' },
-  { id: 'barbier', name: 'Barbier' },
   { id: 'ivoire', name: 'Ivoire & laiton' },
   { id: 'barbierjour', name: 'Barbier jour' },
   { id: 'porcelaine', name: 'Bleu porcelaine' },
