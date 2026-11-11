@@ -52,7 +52,7 @@ const S = {
   idleReturn: null, // élément à refocaliser après « Je continue »
   validated: null, // { name, at } : dernier client qui a validé sa fiche, rappelé à l'accueil jusqu'à la fiche suivante
   upcoming: null, // prochain rendez-vous à venir, tous clients (accueil d'une journée sans rendez-vous)
-  space: 'fiches', // espace coiffeur : 'fiches' | 'agenda' (gardé au verrouillage)
+  space: 'today', // espace coiffeur : 'today' | 'agenda' (gardé au verrouillage)
   week: null, // lundi de la semaine affichée dans l'agenda
   weekAppts: [], // rendez-vous de cette semaine
   moving: null, // { id, name, error } : rendez-vous à déplacer, en attente du nouveau créneau
@@ -337,7 +337,7 @@ function closeModal() {
 
 // ---------- Rendu ----------
 
-const SCROLLERS = ['.detail', '.side', '.results', '.coiffeur-body', '.client', '.client-form', '.dialog', '.agenda'];
+const SCROLLERS = ['.detail', '.side', '.results', '.coiffeur-body', '.client', '.client-form', '.dialog', '.agenda', '.day-scroll'];
 
 // Redessine l'écran en gardant la position de défilement et le focus (sauf changement d'écran).
 function render({ top = false, focus = null } = {}) {
@@ -441,7 +441,7 @@ function viewCoiffeur() {
     <header class="topbar">
       <div class="brand">${logo('sm')}<span class="muted brand-label">Espace coiffeur</span>
         <div class="space-switch" role="group" aria-label="Affichage">
-          <button type="button" class="space-btn" data-action="space" data-space="fiches" aria-pressed="${S.space === 'fiches'}">${icon('card', 22)} Fiches</button>
+          <button type="button" class="space-btn" data-action="space" data-space="today" aria-pressed="${S.space === 'today'}">${icon('home', 22)} Aujourd’hui</button>
           <button type="button" class="space-btn" data-action="space" data-space="agenda" aria-pressed="${S.space === 'agenda'}">${icon('calendar', 22)} Agenda</button>
         </div>
       </div>
@@ -457,7 +457,6 @@ function viewCoiffeur() {
         ? `<main class="agenda">${viewAgenda()}</main>`
         : `<div class="coiffeur-body">
       <aside class="side">
-        ${viewTodayEntry()}
         <label for="search" class="label">Client</label>
         <div class="search">
           ${icon('search', 18)}
@@ -471,17 +470,6 @@ function viewCoiffeur() {
     </div>`
     }
   </div>`;
-}
-
-// Retour à la journée depuis n'importe quelle fiche : toujours en tête de la colonne.
-function viewTodayEntry() {
-  const n = S.todayAppts.length;
-  const wait = [...S.todayVisits.values()].filter((v) => v.status === 'pending').length;
-  const sub = [n ? `${n} rendez-vous` : 'aucun rendez-vous', wait ? `${wait} à valider` : ''].filter(Boolean).join(SEP);
-  return `<button type="button" class="result today-entry${S.client ? '' : ' active'}" data-action="today"${S.client ? '' : ' aria-current="page"'}>
-    <span class="result-name">${icon('home', 18)} Aujourd’hui</span>
-    <span class="result-sub">${esc(sub)}</span>
-  </button>`;
 }
 
 // ---------- Agenda ----------
@@ -799,7 +787,7 @@ async function saveAppt(m) {
   const late = issue?.reason === 'close'; // dépassement de 18 h forcé : rappelé
   agendaNote(`${what}${apptName(saved)}, ${when}${late ? ` Fin à ${fmtTime(core.endOf(saved).toISOString())}, après 18 h.` : ''}`);
   S.flash = saved.id;
-  S.modalReturn = `[data-action="appt"][data-id="${saved.id}"]`; // le focus va au rendez-vous noté
+  S.modalReturn = `.appt-block[data-id="${saved.id}"]`; // le focus va au rendez-vous noté
   closeModal();
   S.flash = null;
   announce(`${what}${apptName(saved, true)}, ${when}${late ? ` ${issue.text}` : ''}`);
@@ -813,7 +801,7 @@ function agendaNote(text, undo = null) {
 
 // Ouvre la fiche du rendez-vous, prestations prévues cochées si la visite du jour est encore vide.
 async function openApptClient(a) {
-  S.space = 'fiches';
+  S.space = 'today';
   S.modal = null;
   S.modalReturn = null;
   if (apptClient(a)) {
@@ -894,7 +882,7 @@ async function undoAgenda() {
   const text = (name) => (u.kind === 'move' ? `${name} : remis au ${when}` : `Rendez-vous de ${name} rétabli, ${when}`);
   agendaNote(text(apptName(saved)));
   S.flash = saved.id;
-  render({ focus: '.agenda-head h1' });
+  render({ focus: S.space === 'agenda' ? '.agenda-head h1' : '.today-plan h1' });
   S.flash = null;
   announce(text(apptName(saved, true)));
 }
@@ -1182,6 +1170,15 @@ const viewValidated = () =>
     ? `<p class="done-line">${icon('check', 18)}<span><strong>${esc(S.validated.name)}</strong> a validé sa fiche à ${fmtTime(S.validated.at)}.</span></p>`
     : '';
 
+// Le planning du jour défile dans sa propre zone (titre, messages et bandeaux restent en vue) ;
+// à l'arrivée, il se cale une demi-heure avant maintenant.
+function scrollPlanToNow() {
+  const box = app.querySelector('.day-scroll');
+  const col = box?.querySelector('.day-col');
+  if (!col) return;
+  box.scrollTop = ((core.planStartMin(new Date()) - core.OPEN_MIN) / OPEN_SPAN) * col.offsetHeight;
+}
+
 // Visite du jour du client d'un rendez-vous (celle « à valider » d'abord, sinon la dernière validée).
 const visitOf = (a) => (a.clientId ? S.todayVisits.get(a.clientId) : null);
 
@@ -1228,9 +1225,11 @@ function viewTodayPlan() {
       ${S.note?.undo ? `<div class="week-nav"><button type="button" class="btn btn-ghost" data-action="undo">${icon('undo', 18)} ${S.note.undo.label}</button></div>` : ''}
     </div>
     ${n ? '' : nextLink}
-    <div class="day-plan">
-      <div class="hours" aria-hidden="true">${hourMarks(true)}</div>
-      ${viewDayColumn(day, list, now, { next })}
+    <div class="day-scroll">
+      <div class="day-plan">
+        <div class="hours" aria-hidden="true">${hourMarks(true)}</div>
+        ${viewDayColumn(day, list, now, { next })}
+      </div>
     </div>
   </div>`;
 }
@@ -1908,6 +1907,7 @@ async function enterCoiffeur() {
   await refreshAppts();
   if (S.clientId) await selectClient(S.clientId);
   go('coiffeur');
+  scrollPlanToNow();
   if (S.lockedModal) {
     const held = S.lockedModal;
     S.lockedModal = null;
@@ -2199,10 +2199,18 @@ const actions = {
     render();
     toast('Sauvegarde en ligne arrêtée sur cette tablette');
   },
+  // « Aujourd'hui » ramène toujours au planning : la fiche ouverte se referme, sa visite en cours est
+  // mise de côté. Un déplacement commencé dans l'agenda est abandonné.
   space: async (el) => {
     S.space = el.dataset.space;
+    S.moving = null;
     if (S.space === 'agenda') await loadWeek();
+    else {
+      parkDraft();
+      Object.assign(S, { clientId: null, client: null, query: '' });
+    }
     render({ focus: `[data-space="${S.space}"]` });
+    scrollPlanToNow();
   },
   slot: (el) => {
     const start = el.dataset.start;
@@ -2319,12 +2327,6 @@ const actions = {
   'week-now': () => showWeek(core.defaultWeek(new Date()), '[data-action="week-next"]'),
   'export-clients': exportClients,
   'export-visits': exportVisits,
-  // Retour à la journée : la fiche se referme, sa visite en cours est mise de côté.
-  today: () => {
-    parkDraft();
-    Object.assign(S, { clientId: null, client: null, query: '' });
-    render({ top: true, focus: '.detail h1' });
-  },
   select: async (el) => {
     await selectClient(el.dataset.id);
     render({ top: true });

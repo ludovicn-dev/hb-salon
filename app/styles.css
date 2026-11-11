@@ -260,7 +260,7 @@ h2.label { font-weight: 400; }
 }
 .brand, .top-actions { display: flex; align-items: center; gap: 14px; }
 .top-actions { gap: 10px; flex-wrap: wrap; }
-/* Date et heure au centre, entre l'agenda et la sauvegarde, à la taille des boutons Fiches / Agenda. */
+/* Date et heure au centre, entre l'agenda et la sauvegarde, à la taille des boutons Aujourd’hui / Agenda. */
 .today { flex: 1; display: flex; justify-content: center; align-items: baseline; gap: 12px; min-width: 0; font-size: 18px; font-weight: 600; color: var(--text-2); white-space: nowrap; }
 .clock { color: var(--text); font-weight: 700; font-variant-numeric: tabular-nums; }
 
@@ -320,10 +320,6 @@ h2.label { font-weight: 400; }
 .draft-foot > .btn-lg { flex-shrink: 0; }
 .result.unnamed .result-name { font-style: italic; font-weight: 500; color: var(--text-2); }
 /* Retour à la journée, en tête de la colonne : même dessin qu'une fiche, or quand c'est l'écran affiché. */
-.today-entry { flex-shrink: 0; }
-.today-entry .result-name { display: flex; align-items: center; gap: 8px; }
-.today-entry .ic { color: var(--muted); }
-.today-entry.active .ic { color: var(--accent); }
 
 .btn-new {
   display: flex;
@@ -804,6 +800,7 @@ button.photo:active { border-color: var(--accent); }
 
 @media (max-width: 700px) {
   .today-date { display: none; }
+  .day-scroll { flex: none; height: 70vh; } /* la page défile : le planning garde une fenêtre à lui */
   .coiffeur-body { flex-direction: column; overflow-y: auto; }
   .side { width: auto; border-right: none; border-bottom: 1px solid var(--line); padding: 16px; }
   .results { max-height: 260px; }
@@ -816,7 +813,7 @@ button.photo:active { border-color: var(--accent); }
 
 /* ---------- Agenda ---------- */
 
-/* Fiches / Agenda : les deux grandes portes de l'espace coiffeur, plus visibles que les réglages à droite. */
+/* Aujourd’hui / Agenda : les deux grandes portes de l'espace coiffeur, plus visibles que les réglages à droite. */
 .space-switch { display: flex; gap: 4px; margin-left: 8px; padding: 4px; border: 1px solid var(--line-2); border-radius: 16px; }
 .space-btn {
   --space-pad: 22px;
@@ -1017,11 +1014,12 @@ button.photo:active { border-color: var(--accent); }
 }
 
 /* Planning du jour (accueil de l'espace coiffeur) : la journée en une colonne large, qui défile. */
-.today-plan { display: flex; flex-direction: column; gap: 8px; padding-bottom: 24px; }
+.today-plan { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding-bottom: 16px; }
+.day-scroll { flex: 1; min-height: 240px; overflow-y: auto; overscroll-behavior: contain; border-radius: 6px; }
 .today-plan .agenda-head h1 { font-size: 40px; }
 .today-plan .agenda-title > .muted { margin: 2px 0 0; }
 .today-plan .next-appt { align-self: flex-start; }
-.day-plan { flex-shrink: 0; display: grid; grid-template-columns: 48px minmax(0, 1fr); column-gap: 6px; height: calc(var(--half-h) * 19); margin-top: 8px; }
+.day-plan { flex-shrink: 0; display: grid; grid-template-columns: 48px minmax(0, 1fr); column-gap: 6px; height: calc(var(--half-h) * 19); padding-block: 8px; box-sizing: content-box; }
 .hour.half { font-size: 12px; opacity: 0.8; }
 .today-block { gap: 2px; padding: 6px 12px; font-size: 15px; }
 .today-block.next { box-shadow: inset 0 0 0 1.5px var(--accent); }
@@ -1044,8 +1042,7 @@ button.photo:active { border-color: var(--accent); }
 @media (max-height: 520px) and (min-width: 701px) {
   .side { padding-block: 12px; gap: 8px; overflow-y: auto; }
   .side > .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  .today-entry { display: none; }
-  .search { position: sticky; top: 0; z-index: 1; flex-shrink: 0; }
+    .search { position: sticky; top: 0; z-index: 1; flex-shrink: 0; }
   .results { flex: none; overflow: visible; }
   .result { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-height: 44px; padding: 8px 14px; }
   .btn-new { flex-shrink: 0; }
