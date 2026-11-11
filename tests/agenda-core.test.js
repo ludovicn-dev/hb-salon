@@ -204,3 +204,16 @@ test('planStartMin : calé une demi-heure avant maintenant, borné à la journé
   assert.equal(planStartMin(d(11, 17, 40)), CLOSE_MIN - 60);
   assert.equal(planStartMin(d(11, 20, 0)), CLOSE_MIN - 60);
 });
+
+test('planStartMin : un rendez-vous coupé par le haut se montre depuis son début', () => {
+  const day = [appt('a', iso(11, 9, 30), 30), appt('b', iso(11, 10, 0), 90)];
+  // 10 h 20 : 9 h 50 tombe au milieu du rendez-vous de 9 h 30, on remonte à 9 h 30.
+  assert.equal(planStartMin(d(11, 10, 20), day), 9 * 60 + 30);
+  // 11 h 10 : 10 h 40 tombe dans celui de 10 h, commencé 40 min plus tôt.
+  assert.equal(planStartMin(d(11, 11, 10), day), 10 * 60);
+  // Un rendez-vous déjà fini ou qui commence pile au calage ne change rien.
+  assert.equal(planStartMin(d(11, 12, 30), day), 12 * 60);
+  assert.equal(planStartMin(d(11, 10, 30), day), 10 * 60);
+  // Rendez-vous commencé plus d'une heure avant le calage : le remonter cacherait « maintenant ».
+  assert.equal(planStartMin(d(11, 14, 0), [appt('c', iso(11, 11, 0), 240)]), 13 * 60 + 30);
+});

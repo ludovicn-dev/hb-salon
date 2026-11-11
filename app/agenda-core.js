@@ -45,7 +45,17 @@ export const isOpenDay = (date) => date.getDay() !== 0;
 
 // Haut du planning du jour à l'ouverture : une demi-heure avant maintenant, sans sortir de la
 // journée ; en fin d'après-midi, la dernière heure reste visible.
-export const planStartMin = (now) => Math.min(Math.max(minutesOf(now) - SLOT_MIN, OPEN_MIN), CLOSE_MIN - 60);
+// Haut du planning du jour : une demi-heure avant maintenant ; si ce point coupe un rendez-vous commencé
+// moins d'une heure plus tôt, on remonte à son début pour qu'il se lise en entier (nom compris).
+export function planStartMin(now, appts = []) {
+  const want = minutesOf(now) - SLOT_MIN;
+  let start = want;
+  for (const a of appts) {
+    const s = minutesOf(new Date(a.start));
+    if (s < start && s + a.duration > want && s >= want - 60) start = s;
+  }
+  return Math.min(Math.max(start, OPEN_MIN), CLOSE_MIN - 60);
+}
 
 export const weekDays = (monday) => Array.from({ length: 6 }, (_, i) => addDays(monday, i));
 

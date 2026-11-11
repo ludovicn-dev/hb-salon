@@ -1176,7 +1176,11 @@ function scrollPlanToNow() {
   const box = app.querySelector('.day-scroll');
   const col = box?.querySelector('.day-col');
   if (!col) return;
-  box.scrollTop = ((core.planStartMin(new Date()) - core.OPEN_MIN) / OPEN_SPAN) * col.offsetHeight;
+  // Position de la colonne dans la zone qui défile (marge haute du planning comprise), puis quelques pixels
+  // de marge : le libellé d'heure centré sur la ligne et le haut du rendez-vous restent entiers.
+  const colTop = col.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop;
+  const line = ((core.planStartMin(new Date(), S.todayAppts) - core.OPEN_MIN) / OPEN_SPAN) * col.offsetHeight;
+  box.scrollTop = Math.max(0, colTop + line - 6);
 }
 
 // Visite du jour du client d'un rendez-vous (celle « à valider » d'abord, sinon la dernière validée).
@@ -1219,7 +1223,7 @@ function viewTodayPlan() {
     <div class="agenda-head">
       <div class="agenda-title">
         <h1 class="serif">Aujourd’hui</h1>
-        <p class="muted">${fmtDayTitle(now.toISOString())}${SEP}${n ? `${n} rendez-vous` : 'aucun rendez-vous'}</p>
+        <p class="muted"><span class="plan-date">${fmtDayTitle(now.toISOString())}${SEP}</span><span class="plan-count">${n ? `${n} rendez-vous` : 'aucun rendez-vous'}</span></p>
         ${viewAgendaLine(over ? 'Journée terminée.' : HINT_SLOT)}
       </div>
       ${S.note?.undo ? `<div class="week-nav"><button type="button" class="btn btn-ghost" data-action="undo">${icon('undo', 18)} ${S.note.undo.label}</button></div>` : ''}

@@ -32,7 +32,7 @@ PWA en JavaScript simple, sans framework ni étape de build, tout dans [app/](ap
 - Revue de design : `/impeccable critique` (rapports dans [.impeccable/critique/](.impeccable/critique/)).
 
 ## Design « Élégance »
-Bleu nuit `#161D33`, or rose `#E3B59C`, Cormorant Garamond (titres) + Manrope (texte). Couleurs et durées d'animation en variables CSS dans `styles.css`, aucune en dur.
+Bleu nuit `#161D33`, or rose `#E3B59C`, Cormorant Garamond (titres) + Manrope (texte). Couleurs, durées d'animation, tailles de texte (`--fs-*` : 13, 14, 16, 18 px ; titres 32, 40, 56) et rayons (`--r-*`) en variables CSS dans `styles.css`, aucune valeur en dur ni taille intermédiaire.
 - Retour au toucher sur tout élément tactile (`:active`, transition courte), sans changer la mise en page.
 - Un seul bouton or plein par écran (l'action principale). L'or marque aussi ce qui est choisi ; le focus clavier est ivoire (`--focus`).
 - Bordeaux et triangle d'alerte réservés à l'allergie ; erreurs et actions destructrices en corail `--error` ; « à valider » en or avec horloge ; informations neutres.
