@@ -1,0 +1,403 @@
+/* Thèmes au choix dans les Réglages (liste et ordre : themes.js). Élégance, thème par défaut, est dans styles.css.
+   Chaque bloc redonne toutes les couleurs (test : tests/themes.test.js, contrastes compris).
+   --accent : or des repères (texte, bords, choisi) ; --accent-fill : fonds dorés, --on-accent pour le texte dessus. */
+
+/* Élégance jour (clair) : La même identité en lumière du jour. */
+[data-theme="jour"] {
+  --bg: #f6f1ee;
+  --panel: #fffcfa;
+  --panel-2: #f0e6e0;
+  --line: #e3d7cf;
+  --line-2: #7c7f96;
+  --control-line: #767a92;
+  --control-line-2: #686c84;
+  --text: #161d33;
+  --text-2: #39415e;
+  --muted: #5a6180;
+  --placeholder: #81869d;
+  --accent: #94553a;
+  --accent-hi: #6e4438;
+  --accent-fill: #e3b59c;
+  --accent-fill-hi: #c49e8c;
+  --on-accent: #161d33;
+  --warn-bg: #fbe9e6;
+  --error: #b8321f;
+  --scrim: rgba(28, 24, 22, 0.42);
+  --appt-bg: #e5e8f1;
+  --appt-bg-press: #cbceda;
+  --serif: 'Cormorant Garamond', Georgia, serif;
+  --sans: Manrope, system-ui, sans-serif;
+  --title-weight: 600;
+  --logo-1: #cf9576;
+  --logo-2: #94553a;
+  --welcome-bg: radial-gradient(ellipse 55% 60% at 50% 42%, #fffaf6 0%, #f8f1ec 50%, #efe5df 100%);
+  color-scheme: light;
+}
+
+/* Barbier (sombre) : Cuir cognac, bois sombre et capitales franches. */
+[data-theme="barbier"] {
+  --bg: #181513;
+  --panel: #221e1b;
+  --panel-2: #2e2824;
+  --line: #3a332d;
+  --line-2: #7d7064;
+  --control-line: #86786b;
+  --control-line-2: #938679;
+  --text: #f2eadf;
+  --text-2: #d6ccbf;
+  --muted: #b5a99b;
+  --placeholder: #958a7e;
+  --accent: #d9995f;
+  --accent-hi: #e8c29f;
+  --accent-fill: #d39257;
+  --accent-fill-hi: #e5be9a;
+  --on-accent: #181513;
+  --warn-bg: #3b211e;
+  --error: #ff7a66;
+  --scrim: rgba(4, 6, 12, 0.66);
+  --serif: Oswald, 'Arial Narrow', sans-serif;
+  --sans: 'Work Sans', system-ui, sans-serif;
+  --title-weight: 500;
+  --title-case: uppercase;
+  --title-track: 0.04em;
+  --fs-xl: 26px;
+  --fs-2xl: 33px;
+  --fs-3xl: 46px;
+  --r-xs: 3px;
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 8px;
+  --r-xl: 10px;
+  --r-pill: 4px;
+  --logo-1: #ebb985;
+  --logo-2: #b8743a;
+  --welcome-bg: repeating-linear-gradient(135deg, rgba(211,146,87,0.05) 0 22px, transparent 22px 44px), radial-gradient(ellipse 60% 65% at 50% 42%, #2a231e 0%, #181513 75%);
+  color-scheme: dark;
+}
+
+/* Ivoire & laiton (clair) : Ivoire chaud, laiton et encre café. */
+[data-theme="ivoire"] {
+  --bg: #f5f0e6;
+  --panel: #fffcf6;
+  --panel-2: #ece3d2;
+  --line: #ddd2bf;
+  --line-2: #857a68;
+  --control-line: #7e735f;
+  --control-line-2: #716754;
+  --text: #2a2118;
+  --text-2: #4a3f33;
+  --muted: #64584a;
+  --placeholder: #8a7f70;
+  --accent: #7c5d1f;
+  --accent-hi: #634b1d;
+  --accent-fill: #c9a45c;
+  --accent-fill-hi: #b19052;
+  --on-accent: #2a2118;
+  --warn-bg: #f9e3dd;
+  --error: #b3301f;
+  --scrim: rgba(28, 24, 22, 0.42);
+  --appt-bg: #ede3cc;
+  --appt-bg-press: #d3c9b3;
+  --serif: 'Playfair Display', Georgia, serif;
+  --sans: 'Source Sans 3', system-ui, sans-serif;
+  --title-weight: 500;
+  --fs-xl: 30px;
+  --fs-2xl: 38px;
+  --fs-3xl: 53px;
+  --logo-1: #d4b06a;
+  --logo-2: #8c6a2a;
+  --welcome-bg: radial-gradient(ellipse 55% 60% at 50% 42%, #fffdf7 0%, #f7f2e8 50%, #ece4d4 100%);
+  color-scheme: light;
+}
+
+/* Barbier jour (clair) : Le Barbier en plein jour. */
+[data-theme="barbierjour"] {
+  --bg: #f1ebe2;
+  --panel: #fbf8f3;
+  --panel-2: #e8dfd2;
+  --line: #d9cdbd;
+  --line-2: #857565;
+  --control-line: #7e6e5f;
+  --control-line-2: #706154;
+  --text: #1e1814;
+  --text-2: #3d332b;
+  --muted: #5c4f44;
+  --placeholder: #85776a;
+  --accent: #8a4a1c;
+  --accent-hi: #6a3b1a;
+  --accent-fill: #c97d3e;
+  --accent-fill-hi: #af6e38;
+  --on-accent: #1e1814;
+  --warn-bg: #f8e1dc;
+  --error: #b0301e;
+  --scrim: rgba(28, 24, 22, 0.42);
+  --appt-bg: #ecdcc8;
+  --appt-bg-press: #d2c2af;
+  --serif: Oswald, 'Arial Narrow', sans-serif;
+  --sans: 'Work Sans', system-ui, sans-serif;
+  --title-weight: 500;
+  --title-case: uppercase;
+  --title-track: 0.04em;
+  --fs-xl: 26px;
+  --fs-2xl: 33px;
+  --fs-3xl: 46px;
+  --r-xs: 3px;
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 8px;
+  --r-xl: 10px;
+  --r-pill: 4px;
+  --logo-1: #c98a52;
+  --logo-2: #7f4319;
+  --welcome-bg: repeating-linear-gradient(135deg, rgba(138,74,28,0.045) 0 22px, transparent 22px 44px), radial-gradient(ellipse 60% 65% at 50% 42%, #fbf7f0 0%, #f1ebe2 75%);
+  color-scheme: light;
+}
+
+/* Bleu porcelaine (clair) : Blanc porcelaine, bleu de faïence et logo doré. */
+[data-theme="porcelaine"] {
+  --bg: #f2f4f8;
+  --panel: #ffffff;
+  --panel-2: #e4e9f3;
+  --line: #d5dbe7;
+  --line-2: #7a8299;
+  --control-line: #737b93;
+  --control-line-2: #656e86;
+  --text: #18213d;
+  --text-2: #36405e;
+  --muted: #555f7c;
+  --placeholder: #838aa1;
+  --accent: #2d4b8e;
+  --accent-hi: #273e76;
+  --accent-fill: #2d4b8e;
+  --accent-fill-hi: #2a4582;
+  --on-accent: #ffffff;
+  --warn-bg: #fbe6e4;
+  --error: #b42318;
+  --scrim: rgba(28, 24, 22, 0.42);
+  --appt-bg: #e1e8f5;
+  --appt-bg-press: #c7cfde;
+  --serif: 'Gilda Display', Didot, Georgia, serif;
+  --sans: Figtree, system-ui, sans-serif;
+  --title-weight: 400;
+  --logo-1: #cfac70;
+  --logo-2: #8f6d33;
+  --welcome-bg: radial-gradient(ellipse 55% 60% at 50% 42%, #ffffff 0%, #f5f7fb 50%, #e6ebf4 100%);
+  color-scheme: light;
+}
+
+/* Ardoise & cuivre (sombre) : Ardoise bleutée, cuivre et rayures fines de costume. */
+[data-theme="ardoise"] {
+  --bg: #171c21;
+  --panel: #1f262c;
+  --panel-2: #29323a;
+  --line: #333d46;
+  --line-2: #6c7a86;
+  --control-line: #76848f;
+  --control-line-2: #84919b;
+  --text: #eef1f2;
+  --text-2: #ccd4d9;
+  --muted: #a7b2ba;
+  --placeholder: #87939c;
+  --accent: #de9a70;
+  --accent-hi: #ebc2a9;
+  --accent-fill: #d68a5c;
+  --accent-fill-hi: #e6b99d;
+  --on-accent: #171c21;
+  --warn-bg: #3a2124;
+  --error: #ff7b68;
+  --scrim: rgba(4, 6, 12, 0.66);
+  --serif: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+  --sans: Barlow, system-ui, sans-serif;
+  --title-weight: 600;
+  --title-case: uppercase;
+  --title-track: 0.03em;
+  --fs-xl: 29px;
+  --fs-2xl: 36px;
+  --fs-3xl: 50px;
+  --r-xs: 3px;
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 8px;
+  --r-xl: 10px;
+  --r-pill: 4px;
+  --logo-1: #eab08a;
+  --logo-2: #b8693d;
+  --welcome-bg: repeating-linear-gradient(90deg, rgba(238,241,242,0.028) 0 1px, transparent 1px 16px), radial-gradient(ellipse 60% 65% at 50% 42%, #24303a 0%, #171c21 75%);
+  color-scheme: dark;
+}
+
+/* Éditorial (clair) : Noir et blanc, angles vifs et capitales espacées. */
+[data-theme="editorial"] {
+  --bg: #f6f6f4;
+  --panel: #ffffff;
+  --panel-2: #ececea;
+  --line: #dcdcd8;
+  --line-2: #858581;
+  --control-line: #7d7d79;
+  --control-line-2: #6d6d69;
+  --text: #111111;
+  --text-2: #333333;
+  --muted: #5c5c58;
+  --placeholder: #8a8a86;
+  --accent: #111111;
+  --accent-hi: #111111;
+  --accent-fill: #111111;
+  --accent-fill-hi: #111111;
+  --on-accent: #ffffff;
+  --warn-bg: #fbe7e7;
+  --error: #bf1e2e;
+  --scrim: rgba(28, 24, 22, 0.42);
+  --appt-bg: #e9e9e5;
+  --appt-bg-press: #d0d0cc;
+  --serif: 'Bodoni Moda', Didot, Georgia, serif;
+  --sans: Archivo, system-ui, sans-serif;
+  --title-weight: 500;
+  --r-xs: 0px;
+  --r-sm: 0px;
+  --r-md: 0px;
+  --r-lg: 0px;
+  --r-xl: 0px;
+  --r-pill: 0px;
+  --logo-1: #111111;
+  --logo-2: #111111;
+  --welcome-bg: linear-gradient(#f6f6f4, #f6f6f4);
+  color-scheme: light;
+}
+
+/* Lagon (clair) : Turquoise du lagon et sable blanc. */
+[data-theme="lagon"] {
+  --bg: #f4f0e6;
+  --panel: #fffdf8;
+  --panel-2: #e2efec;
+  --line: #ddd5c5;
+  --line-2: #7b8884;
+  --control-line: #75837e;
+  --control-line-2: #667673;
+  --text: #0f2f35;
+  --text-2: #2b4b50;
+  --muted: #4b6669;
+  --placeholder: #7a8d8d;
+  --accent: #0b6a6e;
+  --accent-hi: #0c585d;
+  --accent-fill: #0e7a7e;
+  --accent-fill-hi: #0e6f73;
+  --on-accent: #ffffff;
+  --warn-bg: #fbe4df;
+  --error: #b3361f;
+  --scrim: rgba(28, 24, 22, 0.42);
+  --appt-bg: #d6ebe8;
+  --appt-bg-press: #bfd2cf;
+  --serif: 'DM Serif Display', Georgia, serif;
+  --sans: 'DM Sans', system-ui, sans-serif;
+  --title-weight: 400;
+  --logo-1: #34a8a6;
+  --logo-2: #0b6a6e;
+  --welcome-bg: linear-gradient(180deg, #cfe9e5 0%, #e4efe8 38%, #f4f0e6 72%);
+  color-scheme: light;
+}
+
+/* Art déco (sombre) : Vert émeraude, or et géométrie des années 1920. */
+[data-theme="artdeco"] {
+  --bg: #0d221e;
+  --panel: #132d28;
+  --panel-2: #1a3832;
+  --line: #23463e;
+  --line-2: #5e8178;
+  --control-line: #68897f;
+  --control-line-2: #79958a;
+  --text: #f2ebdd;
+  --text-2: #cfd9cf;
+  --muted: #a7b9b0;
+  --placeholder: #86998f;
+  --accent: #d8b66e;
+  --accent-hi: #e8d3a8;
+  --accent-fill: #d8b66e;
+  --accent-fill-hi: #e8d3a8;
+  --on-accent: #0d221e;
+  --warn-bg: #3a2125;
+  --error: #ff7f6e;
+  --scrim: rgba(4, 6, 12, 0.66);
+  --serif: Marcellus, 'Trajan Pro', Georgia, serif;
+  --sans: 'Josefin Sans', system-ui, sans-serif;
+  --title-weight: 400;
+  --title-track: 0.02em;
+  --r-xs: 2px;
+  --r-sm: 2px;
+  --r-md: 3px;
+  --r-lg: 4px;
+  --r-xl: 6px;
+  --r-pill: 2px;
+  --logo-1: #f2da9e;
+  --logo-2: #b8923f;
+  --welcome-bg: repeating-conic-gradient(from 270deg at 50% 108%, rgba(216,182,110,0.055) 0deg 0.5deg, transparent 0.5deg 6deg), radial-gradient(ellipse 60% 65% at 50% 42%, #173a33 0%, #0d221e 75%);
+  color-scheme: dark;
+}
+
+/* Atelier (clair) : Béton ciré, noir mat et jaune moutarde. */
+[data-theme="atelier"] {
+  --bg: #e6e5e2;
+  --panel: #f2f1ef;
+  --panel-2: #dad9d5;
+  --line: #c9c8c3;
+  --line-2: #787772;
+  --control-line: #72716c;
+  --control-line-2: #656460;
+  --text: #1c1c1a;
+  --text-2: #383835;
+  --muted: #545450;
+  --placeholder: #7c7b76;
+  --accent: #6f5000;
+  --accent-hi: #564008;
+  --accent-fill: #e2a919;
+  --accent-fill-hi: #c49419;
+  --on-accent: #1c1c1a;
+  --warn-bg: #f6ddd8;
+  --error: #b0261c;
+  --scrim: rgba(28, 24, 22, 0.42);
+  --appt-bg: #f1e5bf;
+  --appt-bg-press: #d3caac;
+  --serif: 'Space Grotesk', system-ui, sans-serif;
+  --sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --title-weight: 600;
+  --title-track: -0.01em;
+  --fs-xl: 29px;
+  --fs-2xl: 36px;
+  --fs-3xl: 50px;
+  --r-xs: 4px;
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 8px;
+  --r-xl: 10px;
+  --r-pill: 4px;
+  --logo-1: #1c1c1a;
+  --logo-2: #1c1c1a;
+  --welcome-bg: linear-gradient(rgba(28,28,26,0.045) 1px, transparent 1px) 0 0 / 40px 40px, linear-gradient(90deg, rgba(28,28,26,0.045) 1px, transparent 1px) 0 0 / 40px 40px, #e6e5e2;
+  color-scheme: light;
+}
+
+/* Cadre de l'accueil (Bienvenue, Merci) : Éditorial, Art déco (double) et Bleu porcelaine. */
+[data-theme="editorial"] .welcome::before,
+[data-theme="artdeco"] .welcome::before,
+[data-theme="porcelaine"] .welcome::before {
+  content: '';
+  position: absolute;
+  inset: 28px;
+  border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
+  pointer-events: none;
+}
+[data-theme="artdeco"] .welcome::after {
+  content: '';
+  position: absolute;
+  inset: 34px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  pointer-events: none;
+}
+[data-theme="editorial"] .welcome .corner,
+[data-theme="artdeco"] .welcome .corner,
+[data-theme="porcelaine"] .welcome .corner { right: 52px; bottom: calc(52px + var(--safe-bottom)); }
+[data-theme="editorial"] .welcome .corner-left,
+[data-theme="artdeco"] .welcome .corner-left,
+[data-theme="porcelaine"] .welcome .corner-left { left: 52px; bottom: calc(62px + var(--safe-bottom)); }
+
+/* Éditorial : « Bienvenue » en italique, comme une couverture de magazine. */
+[data-theme="editorial"] .welcome > h1 { font-style: italic; }

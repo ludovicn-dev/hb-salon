@@ -10,6 +10,8 @@ const SHELL = [
   './',
   'index.html',
   'styles.css',
+  'themes.css',
+  'themes.js',
   'app.js',
   'db.js',
   'sync.js',
