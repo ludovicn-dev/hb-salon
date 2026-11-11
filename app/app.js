@@ -256,7 +256,7 @@ function go(view) {
   S.view = view;
   S.modal = null;
   render();
-  if (view === 'client' || view === 'coiffeur') bumpIdle();
+  if (view === 'client' || view === 'coiffeur' || view === 'pin') bumpIdle();
   if (view === 'thanks') timer = setTimeout(() => go('welcome'), THANKS_MS);
 }
 
@@ -271,7 +271,9 @@ function heldModal() {
 }
 
 function bumpIdle() {
-  if (S.view === 'coiffeur') {
+  // « Changer le code » fait partie de l'espace coiffeur : son « Annuler » y ramène sans code,
+  // il se verrouille donc au bout du même délai.
+  if (S.view === 'coiffeur' || (S.view === 'pin' && S.pin?.inside)) {
     clearTimeout(timer);
     // La visite en cours est gardée.
     timer = setTimeout(() => {
@@ -915,30 +917,6 @@ async function loadWeek() {
   S.weekAppts = await db.appointmentsBetween(S.week.toISOString(), addDays(S.week, 7).toISOString());
 }
 
-// Morceaux libres de chaque demi-heure, au quart d'heure près : ils commencent après le rendez-vous
-// qui déborde, s'arrêtent au suivant, et pas avant le prochain quart d'heure aujourd'hui.
-function freeSlots(day, appts, now) {
-  const out = [];
-  const sorted = [...appts].sort((x, y) => x.start.localeCompare(y.start));
-  const isToday = day.toDateString() === now.toDateString();
-  const nowMin = isToday ? core.minutesOf(now) : day < now ? Infinity : -Infinity;
-  for (let m = core.OPEN_MIN; m < core.CLOSE_MIN; m += core.SLOT_MIN) {
-    let start = m;
-    let end = m + core.SLOT_MIN;
-    for (const a of sorted) {
-      const s = core.minutesOf(new Date(a.start));
-      if (s <= start && s + a.duration > start) start = s + a.duration;
-    }
-    if (start < nowMin) start = Math.ceil(nowMin / core.STEP_MIN) * core.STEP_MIN;
-    for (const a of sorted) {
-      const s = core.minutesOf(new Date(a.start));
-      if (s > start && s < end) end = s;
-    }
-    if (start < end) out.push({ start, end });
-  }
-  return out;
-}
-
 // Un quart d'heure ne fait que 15 px : sa zone tactile déborde de 8 px sur ses voisins plus grands,
 // jamais sur un autre quart d'heure (chacun garde au moins sa propre case).
 const REACH_PX = 8;
@@ -963,7 +941,7 @@ function viewDayColumn(day, appts, now, today = null) {
   const nowMin = core.minutesOf(now);
   const elapsed = now >= atMinutes(day, core.CLOSE_MIN) ? OPEN_SPAN : isToday ? Math.max(0, nowMin - core.OPEN_MIN) : 0;
   const veil = elapsed ? `<i class="past-veil" style="height:${span(elapsed)}"></i>` : '';
-  const free = freeSlots(day, appts, now);
+  const free = core.freeSlots(day, appts, now);
   const shown = (a) => Math.min(a.duration, core.CLOSE_MIN - core.minutesOf(new Date(a.start))); // coupé à 18 h
   const reach = reachOf([...free, ...appts.map((a) => ({ start: core.minutesOf(new Date(a.start)), end: core.minutesOf(new Date(a.start)) + shown(a) }))]);
   const items = free.map((f) => ({
@@ -1202,7 +1180,7 @@ function viewTodayPlan() {
   const now = new Date();
   const u = S.upcoming;
   const nextLink = u
-    ? `<button type="button" class="link next-appt" data-action="show-appt" data-id="${u.id}">${icon('calendar', 16)}<span>Prochain rendez-vous : ${fmtDayTitle(u.start).toLowerCase()} à ${fmtTime(u.start)}, ${esc(apptName(u))}</span></button>`
+    ? `<button type="button" class="link next-appt" data-action="show-appt" data-id="${u.id}">${icon('calendar', 16)}<span>Prochain rendez-vous : ${fmtDayTitle(u.start).toLowerCase()} à ${fmtTime(u.start)}, ${esc(apptName(u))}</span></button>`
     : '';
   if (!core.isOpenDay(now)) {
     return `
@@ -1580,7 +1558,7 @@ function backupLabel(st = sync.getStatus()) {
 }
 
 function loginError(err) {
-  if (err instanceof TypeError || !navigator.onLine) return 'Pas de connexion Internet. Réessayez une fois connecté.';
+  if (err instanceof sync.NetworkError || !navigator.onLine) return 'Pas de connexion Internet. Réessayez une fois connecté.';
   if (err.code === 'email_not_confirmed') return 'Ce compte n’est pas encore confirmé.';
   if (err.status === 400) return 'E-mail ou mot de passe incorrect.';
   return 'Connexion impossible pour l’instant. Réessayez dans quelques minutes.';
@@ -1799,22 +1777,51 @@ const keptOf = (d) =>
     ? { services: [...d.services], formula: { ...d.formula }, note: d.note, photos: d.photos.filter((p) => !p.id).map(({ blob, thumb }) => ({ blob, thumb })) }
     : null;
 
+// Jour des visites en cours : elles restent datées de ce jour-là même si l'appli reste ouverte la nuit.
+let draftsDay = new Date().toDateString();
+let draftsSig = null; // dernier contenu écrit : un simple redessin ne réécrit pas les photos
+
 function saveDraftsSoon() {
   clearTimeout(draftsTimer);
   draftsTimer = setTimeout(saveDrafts, 500);
 }
 
 async function saveDrafts() {
-  const day = new Date().toDateString();
   const out = Object.fromEntries(S.savedDrafts);
   const keep = (id, d) => {
     delete out[id];
     const k = keptOf(d);
-    if (k) out[id] = { ...k, day };
+    if (k) out[id] = { ...k, day: draftsDay };
   };
   for (const [id, x] of S.drafts) keep(id, x.draft.editId ? x.stash : x.draft);
   if (S.clientId && S.draft) keep(S.clientId, S.draft.editId ? S.stash : S.draft);
+  // Les photos comptent par leur taille : la signature reste légère, et un ajout ou un retrait la change.
+  const sig = JSON.stringify(out, (k, v) => (v instanceof Blob ? `blob:${v.size}` : v));
+  if (sig === draftsSig) return;
   await db.setSetting(DRAFTS_KEY, out);
+  draftsSig = sig;
+}
+
+// Le lendemain, les visites en cours de la veille sont oubliées (même appli restée ouverte la nuit) :
+// la fiche ouverte se referme, l'accueil montre la nouvelle journée.
+function forgetYesterdayDrafts() {
+  const day = new Date().toDateString();
+  if (day === draftsDay) return false;
+  draftsDay = day;
+  for (const x of S.drafts.values()) {
+    dropDraft(x.draft);
+    dropDraft(x.stash);
+  }
+  S.drafts.clear();
+  S.savedDrafts.clear();
+  dropDraft(S.draft);
+  dropDraft(S.stash);
+  S.draft = emptyDraft();
+  S.stash = null;
+  S.clientId = null;
+  S.client = null;
+  saveDraftsSoon();
+  return true;
 }
 
 async function loadSavedDrafts() {
@@ -1907,6 +1914,7 @@ async function enterCoiffeur() {
   }
   S.autoLocked = false;
   S.moving = null; // un déplacement laissé en plan au verrouillage n'attend plus à la reprise
+  forgetYesterdayDrafts();
   await loadClients();
   await refreshAppts();
   if (S.clientId) await selectClient(S.clientId);
@@ -2052,7 +2060,10 @@ async function pinDigit(k) {
 
 function csv(rows) {
   const cell = (v) => {
-    const s = String(v ?? '');
+    let s = String(v ?? '');
+    // Texte saisi par un client qui commence comme une formule (=, +, -, @) : Excel l'exécuterait.
+    // L'apostrophe en tête le garde en texte.
+    if (typeof v === 'string' && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
     return /[;"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   return '﻿' + rows.map((r) => r.map(cell).join(';')).join('\r\n');
@@ -2176,7 +2187,7 @@ const actions = {
     go('welcome');
   },
   'change-pin': () => {
-    S.pin = { mode: 'new', entry: '', first: '', error: '', next: () => go('coiffeur'), cancel: () => go('coiffeur') };
+    S.pin = { mode: 'new', entry: '', first: '', error: '', inside: true, next: () => go('coiffeur'), cancel: () => go('coiffeur') };
     go('pin');
   },
   backup: () => openModal({ type: 'backup' }),
@@ -2938,6 +2949,16 @@ async function onPulled() {
 // Heure de la barre du haut, trait « maintenant » et voile du temps écoulé, mis à jour chaque minute
 // sans redessiner l'écran (un rendu en plein appui ferait perdre le toucher).
 function tickClock() {
+  // Minuit passé devant l'espace coiffeur ouvert : les visites de la veille s'effacent, l'écran suit.
+  if (forgetYesterdayDrafts() && S.view === 'coiffeur') {
+    S.modal = null;
+    loadClients()
+      .then(refreshAppts)
+      .then(() => {
+        render({ top: true });
+        scrollPlanToNow();
+      });
+  }
   const clock = document.getElementById('clock');
   if (clock) clock.textContent = fmtClock();
   const min = core.minutesOf(new Date());

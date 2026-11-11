@@ -34,6 +34,25 @@ function set(patch) {
   listeners.forEach((fn) => fn(getStatus()));
 }
 
+// Réseau injoignable : seul un échec de fetch() le dit. Une autre TypeError est une erreur de l'appli,
+// à montrer comme telle (elle passait pour « Hors ligne »).
+export class NetworkError extends Error {}
+// Déconnexion de la sauvegarde pendant une synchro : le tour s'arrête sans changer l'état affiché.
+class SignedOut extends Error {}
+
+async function net(url, opts) {
+  try {
+    return await fetch(url, opts);
+  } catch (err) {
+    throw Object.assign(new NetworkError(err.message), { cause: err });
+  }
+}
+
+function current() {
+  if (!session) throw new SignedOut('Sauvegarde déconnectée');
+  return session;
+}
+
 class HttpError extends Error {
   constructor(status, body) {
     super(body?.msg || body?.message || body?.error_description || body?.error || `HTTP ${status}`);
@@ -45,7 +64,7 @@ class HttpError extends Error {
 // ---------- Connexion ----------
 
 async function authCall(path, body) {
-  const res = await fetch(`${URL_}/auth/v1/${path}`, {
+  const res = await net(`${URL_}/auth/v1/${path}`, {
     method: 'POST',
     headers: { apikey: KEY, 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -81,9 +100,14 @@ export async function signOut() {
 }
 
 async function refresh() {
+  const before = current();
   try {
-    await keep(await authCall('token?grant_type=refresh_token', { refresh_token: session.refresh_token }));
+    const data = await authCall('token?grant_type=refresh_token', { refresh_token: before.refresh_token });
+    // Déconnecté pendant l'appel : ne pas faire revenir la session effacée.
+    if (session !== before) throw new SignedOut('Sauvegarde déconnectée');
+    await keep(data);
   } catch (err) {
+    if (err instanceof SignedOut) throw err;
     // Jeton refusé (mot de passe changé, compte supprimé) : il faut se reconnecter. Sinon, réseau : on réessaiera.
     if (err instanceof HttpError && err.status >= 400 && err.status < 500) {
       set({ state: 'auth', error: '' });
@@ -94,12 +118,12 @@ async function refresh() {
 }
 
 async function token() {
-  if (session.expires_at - 60 < Date.now() / 1000) await refresh();
-  return session.access_token;
+  if (current().expires_at - 60 < Date.now() / 1000) await refresh();
+  return current().access_token;
 }
 
 async function api(path, { method = 'GET', body, headers = {}, raw = false } = {}, retried = false) {
-  const res = await fetch(`${URL_}${path}`, {
+  const res = await net(`${URL_}${path}`, {
     method,
     headers: {
       apikey: KEY,
@@ -119,7 +143,7 @@ async function api(path, { method = 'GET', body, headers = {}, raw = false } = {
 }
 
 const rest = (table, query = '', opts) => api(`/rest/v1/${table}${query}`, opts);
-const photoPath = (id, thumb) => `${session.user.id}/${id}${thumb ? '-thumb' : ''}.jpg`;
+const photoPath = (id, thumb) => `${current().user.id}/${id}${thumb ? '-thumb' : ''}.jpg`;
 
 // ---------- Correspondance tablette ↔ en ligne ----------
 
@@ -395,9 +419,11 @@ async function run() {
     await db.setSetting('syncLastAt', status.lastAt);
     if (pulled) onPulled();
   } catch (err) {
+    // Déconnecté pendant le tour : signOut a déjà mis l'état « non activée ».
+    if (err instanceof SignedOut || !session) return;
     const pending = await countPending().catch(() => status.pending);
     if (err.auth) set({ state: 'auth', pending });
-    else if (err instanceof TypeError || !navigator.onLine) set({ state: 'offline', pending });
+    else if (err instanceof NetworkError || !navigator.onLine) set({ state: 'offline', pending });
     else {
       console.warn('Sauvegarde en ligne :', err);
       set({ state: 'error', pending, error: err.message, failures: status.failures + 1 });

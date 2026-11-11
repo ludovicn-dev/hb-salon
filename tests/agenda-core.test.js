@@ -10,6 +10,7 @@ import {
   defaultWeek,
   isOpenDay,
   planStartMin,
+  freeSlots,
   weekDays,
   weekLabel,
   slotAt,
@@ -203,6 +204,24 @@ test('planStartMin : calé une demi-heure avant maintenant, borné à la journé
   assert.equal(planStartMin(d(11, 11, 10)), 10 * 60 + 40);
   assert.equal(planStartMin(d(11, 17, 40)), CLOSE_MIN - 60);
   assert.equal(planStartMin(d(11, 20, 0)), CLOSE_MIN - 60);
+});
+
+test('freeSlots : morceaux libres autour des rendez-vous et de maintenant', () => {
+  const at = (h, m = 0) => h * 60 + m;
+  const slot = (list, h, m = 0) => list.find((x) => x.start <= at(h, m) && x.end > at(h, m));
+  // Jour à venir : un rendez-vous de 10 h 15 à 11 h coupe la demi-heure de 10 h.
+  const future = freeSlots(d(12), [appt('a', iso(12, 10, 15), 45)], d(11, 9, 0));
+  assert.deepEqual(slot(future, 10), { start: at(10), end: at(10, 15) });
+  assert.equal(slot(future, 10, 30), undefined);
+  assert.deepEqual(slot(future, 11), { start: at(11), end: at(11, 30) });
+  // Aujourd'hui à 10 h 05, rendez-vous à 10 h 15 : rien de libre sur 10 h 15 (il était dessiné par-dessus).
+  const today = freeSlots(d(11), [appt('a', iso(11, 10, 15), 45)], d(11, 10, 5));
+  assert.equal(slot(today, 10, 15), undefined);
+  assert.equal(today.some((x) => x.start < at(11) && x.end > at(10, 15)), false);
+  // Aujourd'hui à 10 h 05 sans rendez-vous : la demi-heure commence au prochain quart d'heure.
+  assert.deepEqual(slot(freeSlots(d(11), [], d(11, 10, 5)), 10, 15), { start: at(10, 15), end: at(10, 30) });
+  // Jour passé : plus rien.
+  assert.deepEqual(freeSlots(d(10), [], d(11, 10, 5)), []);
 });
 
 test('planStartMin : un rendez-vous coupé par le haut se montre depuis son début', () => {

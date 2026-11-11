@@ -15,7 +15,7 @@ PWA en JavaScript simple, sans framework ni étape de build, tout dans [app/](ap
   - Après toute écriture de rendez-vous : `refreshAppts()`. Un rendez-vous rétabli reprend un nouvel identifiant (l'effacement de l'ancien est peut-être déjà parti en ligne).
   - Code oublié : code de déblocage à 8 chiffres connu du seul installateur. app.js étant public, seule son empreinte PBKDF2 y figure ; ne jamais revenir à un simple SHA-256.
 - `agenda-core.js` : calculs de l'agenda, sans écran ni stockage, testés dans [tests/](tests/).
-- `db.js` : IndexedDB. Toute écriture pose `dirty: 1`, les effacements vont dans `deletions`. Changer la structure = nouvelle `DB_VERSION` avec migration dans `onupgradeneeded`.
+- `db.js` : IndexedDB. Toute écriture pose `dirty: 1`, les effacements vont dans `deletions` (un rendez-vous déjà parti en ligne garde `sent: 1`, car `syncedAt` s'efface à chaque modification). Changer la structure = nouvelle `DB_VERSION` avec migration dans `onupgradeneeded`.
 - `sync.js` : sauvegarde Supabase en REST direct. Ne partent jamais en ligne : un client sans `consentAt`, ses rendez-vous, un rendez-vous `localOnly` (gardé après un refus RGPD ou une suppression de fiche : `detachAppointments` avant `deleteClient` ; purgé une fois son jour passé).
 - `sw.js` : hors-ligne. **Incrémenter `CACHE` à chaque mise en ligne**, sinon la tablette garde l'ancienne version.
 - `logo.svg` : redessiné par `tools/logo-vectoriel.py` ; icônes : rendre le logo en PNG transparent, puis `python -I tools/icones.py <png> app/icons`. `fonts/` : polices auto-hébergées (pas de Google Fonts, pour le hors-ligne).

@@ -1,7 +1,7 @@
 // Hors-ligne : l'appli est servie depuis le cache, puis mise à jour en arrière-plan.
 // Changer CACHE à chaque nouvelle version pour forcer la mise à jour sur la tablette.
 
-const CACHE = 'hb-salon-v19';
+const CACHE = 'hb-salon-v20';
 const FONTS = ['cormorant', 'manrope'].flatMap((f) => [
   `fonts/${f}-latin.woff2`,
   `fonts/${f}-latin-ext.woff2`
@@ -23,8 +23,15 @@ const SHELL = [
   ...FONTS
 ];
 
+// `cache: 'reload'` : chaque fichier vient du serveur, pas du cache HTTP du navigateur (GitHub Pages
+// le garde 10 min), sinon la nouvelle version pouvait mêler un ancien db.js et un nouvel app.js.
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  e.waitUntil(
+    caches
+      .open(CACHE)
+      .then((c) => c.addAll(SHELL.map((url) => new Request(url, { cache: 'reload' }))))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', (e) => {

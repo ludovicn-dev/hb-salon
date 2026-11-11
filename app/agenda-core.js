@@ -57,6 +57,31 @@ export function planStartMin(now, appts = []) {
   return Math.min(Math.max(start, OPEN_MIN), CLOSE_MIN - 60);
 }
 
+// Morceaux libres de chaque demi-heure, au quart d'heure près : pas avant le prochain quart d'heure
+// aujourd'hui, après le rendez-vous qui occupe leur début, jusqu'au rendez-vous suivant.
+// Le décalage à « maintenant » vient d'abord : un rendez-vous qui commence pile au quart d'heure
+// suivant repousse encore le début (sinon un créneau « libre » le recouvrait).
+export function freeSlots(day, appts, now) {
+  const out = [];
+  const sorted = [...appts].sort((x, y) => x.start.localeCompare(y.start));
+  const isToday = day.toDateString() === now.toDateString();
+  const nowMin = isToday ? minutesOf(now) : day < now ? Infinity : -Infinity;
+  for (let m = OPEN_MIN; m < CLOSE_MIN; m += SLOT_MIN) {
+    let start = m < nowMin ? Math.ceil(nowMin / STEP_MIN) * STEP_MIN : m;
+    for (const a of sorted) {
+      const s = minutesOf(new Date(a.start));
+      if (s <= start && s + a.duration > start) start = s + a.duration;
+    }
+    let end = m + SLOT_MIN;
+    for (const a of sorted) {
+      const s = minutesOf(new Date(a.start));
+      if (s > start && s < end) end = s;
+    }
+    if (start < end) out.push({ start, end });
+  }
+  return out;
+}
+
 export const weekDays = (monday) => Array.from({ length: 6 }, (_, i) => addDays(monday, i));
 
 export function weekLabel(monday) {

@@ -147,7 +147,7 @@ export async function deleteClient(id, tombstone = true) {
   // Un rendez-vous jamais envoyé n'a rien à effacer en ligne.
   for (const a of await promisify(appts.index('clientId').getAll(id))) {
     appts.delete(a.id);
-    if (a.syncedAt) mark('appointment', a.id);
+    if (wasSent(a)) mark('appointment', a.id);
   }
   const visitIds = await promisify(visits.index('clientId').getAllKeys(id));
   for (const visitId of visitIds) {
@@ -249,20 +249,29 @@ export async function deletePhoto(id, tombstone = true) {
 // --- Rendez-vous ---
 // La copie du prénom et du téléphone sert quand la fiche n'existe plus.
 
+// Déjà parti en ligne au moins une fois : `syncedAt` s'efface à chaque modification locale, `sent` reste,
+// pour que son effacement soit répercuté en ligne même s'il a été modifié depuis le dernier envoi.
+const wasSent = (a) => !!(a?.syncedAt || a?.sent);
+
 export async function saveAppointment(appt) {
+  const s = await store('appointments', 'readwrite');
+  const id = appt.id || uid();
+  const prev = appt.id ? await promisify(s.get(id)) : null;
+  const { sent, ...rest } = appt; // seul l'enregistrement en base fait foi (un rendez-vous rétabli a un nouvel identifiant)
   const record = {
     clientId: null,
     firstName: '',
     phone: '',
     services: [],
     createdAt: now(),
-    ...appt,
-    id: appt.id || uid(),
+    ...rest,
+    id,
     updatedAt: now(),
     syncedAt: null,
-    dirty: 1
+    dirty: 1,
+    ...(wasSent(prev) ? { sent: 1 } : {})
   };
-  await promisify((await store('appointments', 'readwrite')).put(record));
+  await promisify(s.put(record));
   changed();
   return record;
 }
@@ -292,7 +301,7 @@ export async function deleteAppointment(id, tombstone = true) {
   const cur = await promisify(appts.get(id));
   appts.delete(id);
   // Un rendez-vous jamais envoyé n'a rien à effacer en ligne.
-  if (tombstone && cur?.syncedAt) tx.objectStore('deletions').put({ id, kind: 'appointment', at: now() });
+  if (tombstone && wasSent(cur)) tx.objectStore('deletions').put({ id, kind: 'appointment', at: now() });
   await done(tx);
   if (tombstone) changed();
 }
@@ -309,11 +318,11 @@ export async function detachAppointments(clientId, nowIso) {
   for (const a of await promisify(appts.index('clientId').getAll(clientId))) {
     if (a.start < nowIso) {
       appts.delete(a.id);
-      if (a.syncedAt) dels.put({ id: a.id, kind: 'appointment', at: now() });
+      if (wasSent(a)) dels.put({ id: a.id, kind: 'appointment', at: now() });
       continue;
     }
-    if (a.syncedAt) dels.put({ id: a.id, kind: 'appointment', at: now() });
-    const { dirty, ...rest } = a;
+    if (wasSent(a)) dels.put({ id: a.id, kind: 'appointment', at: now() });
+    const { dirty, sent, ...rest } = a;
     appts.put({ ...rest, clientId: null, localOnly: 1 });
     kept++;
   }
