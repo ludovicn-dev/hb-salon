@@ -13,7 +13,7 @@ L'accueil de l'espace coiffeur est aujourd'hui une liste des rendez-vous du jour
   - chaque rendez-vous affiche l'heure, le nom complet, les prestations, la durée et l'heure de fin. Il porte aussi l'état de la liste actuelle : « Validée à… », « À valider », « Pas de visite notée », « En cours », allergie. L'or va au prochain client pas encore fait ;
   - **toucher un rendez-vous ouvre la fiche du client** pour noter la visite (comportement actuel de `today-appt`, prestations cochées d'avance) ;
   - **toucher un créneau libre ouvre la fenêtre de rendez-vous** de l'agenda, avec la même durée proposée et les mêmes contrôles ;
-  - après l'enregistrement, le message s'affiche sous le titre « Aujourd'hui », avec « Remettre comme avant », comme `agendaNote` sous le titre de la semaine. Le nouveau bloc flashe et prend le focus.
+  - après l'enregistrement, la confirmation s'affiche sous le titre « Aujourd'hui », sur la même ligne que dans l'agenda (`S.note`). Comme dans l'agenda, un nouveau rendez-vous n'a pas de bouton pour revenir en arrière. Le bouton « Rétablir » ou « Remettre comme avant » d'une annulation ou d'un déplacement faits dans l'agenda reste visible ici. Le nouveau bloc flashe et prend le focus.
 - **Journée vide** : le planning est entièrement libre. Le lien « Prochain rendez-vous : … » reste sous le titre.
 - **Dimanche** (salon fermé) : le message « Salon fermé aujourd'hui » remplace le planning, avec le lien vers le prochain rendez-vous ou vers l'agenda.
 - **Modifier, déplacer ou annuler** un rendez-vous du jour : par la ligne « Rendez-vous aujourd'hui à… » de la fiche, qui ouvre l'agenda. Rien de nouveau ici.
