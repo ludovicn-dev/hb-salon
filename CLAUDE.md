@@ -35,6 +35,8 @@ Bleu nuit `#161D33`, or rose `#E3B59C`, Cormorant Garamond (titres) + Manrope (t
 - Bordeaux et triangle d'alerte réservés à l'allergie ; erreurs et actions destructrices en corail `--error` ; « à valider » en or avec horloge ; informations neutres.
 - Bords des champs et boutons à 3:1 minimum (`--control-line`, `--control-line-2`, `--line-2`) ; zones tactiles de 44 px minimum.
 - Textes en français : espace fine insécable (U+202F) avant `? ! :`, insécable (U+00A0) à l'intérieur des « » ; pas d'emoji, icônes SVG en ligne (`ICONS`). Ces caractères font échouer les remplacements exacts tapés à la main : les copier depuis le fichier.
+- Fins de ligne : dates et délais passent par `nbDay` / `nb` (« 11 novembre », « il y a 3 sem. » ne se coupent pas) ; listes à points médians avec `SEP`, ou `.dot-list` quand un élément est long (le point disparaît en début de ligne).
+- Rien ne bouge sous le doigt : un raccourci qui ne s'applique plus est désactivé (`.link:disabled`), pas retiré.
 - Voulus malgré le détecteur impeccable : bordure or à gauche des rendez-vous de l'agenda, hachures du temps écoulé. Les accents de Cormorant qui paraissent décalés sont le dessin de la police.
 
 Maquettes : https://claude.ai/artifact/4HnJfspaKf4fw7f9TrdCSM ; maquettes de travail (agenda, logo) dans `.superpowers/brainstorm/`, ignoré par git.

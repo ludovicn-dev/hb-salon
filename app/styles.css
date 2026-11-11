@@ -84,6 +84,7 @@ input::placeholder, textarea::placeholder { color: var(--placeholder); font-styl
 }
 
 h1, h2, p { margin: 0; }
+h1, h2, h3 { text-wrap: balance; } /* un titre sur deux lignes se partage en lignes de même longueur */
 p { text-wrap: pretty; } /* pas de mot seul en dernière ligne */
 .serif { font-family: var(--serif); font-weight: 500; }
 .muted { color: var(--muted); }
@@ -98,7 +99,7 @@ p { text-wrap: pretty; } /* pas de mot seul en dernière ligne */
   color: var(--muted);
 }
 h2.label { font-weight: 400; }
-.small-label { font-size: 13px; margin: 4px 2px; }
+.small-label { font-size: 13px; margin: 4px 0; }
 
 .err { min-height: 1.4em; color: var(--error); font-size: 15px; font-weight: 500; }
 .err.is-busy { color: var(--muted); }
@@ -166,6 +167,8 @@ h2.label { font-weight: 400; }
   min-height: 44px;
 }
 .link:active { color: var(--accent-hi); }
+/* Raccourci qui ne s'applique plus : il garde sa place (rien ne saute sous le doigt) et se lit encore. */
+.link:disabled { color: var(--muted); opacity: 1; }
 
 /* ---------- Accueil / Merci ---------- */
 
@@ -312,7 +315,6 @@ h2.label { font-weight: 400; }
 .tag-pending { display: inline-flex; align-items: center; gap: 4px; background: transparent; border: 1px solid var(--accent); color: var(--accent); }
 /* Information neutre : la fiche n'a pas encore l'accord du client. */
 .tag-consent { display: inline-block; vertical-align: 1px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); white-space: nowrap; }
-.client-meta .tag-consent { margin-left: 4px; }
 .foot-note { flex: 0 1 380px; color: var(--text-2); font-size: 14px; line-height: 1.4; text-align: right; }
 .draft-foot > .btn-lg { flex-shrink: 0; }
 .result.unnamed .result-name { font-style: italic; font-weight: 500; color: var(--text-2); }
@@ -360,7 +362,13 @@ h2.label { font-weight: 400; }
 .client-head h1 { font-size: clamp(30px, 3.2vw, 38px); line-height: 1.1; }
 .client-head h1.is-long { font-size: clamp(26px, 2.6vw, 32px); }
 .client-id { min-width: 0; }
-.client-meta { margin-top: 6px; color: var(--muted); overflow-wrap: anywhere; }
+/* Coordonnées séparées par des points médians. Chaque élément porte son point à gauche, dans une marge
+   que le paragraphe rogne : en début de ligne le point disparaît, il ne reste qu'entre deux éléments. */
+.client-meta { margin-top: 6px; color: var(--muted); overflow: hidden; }
+.dot-list { display: flex; flex-wrap: wrap; align-items: center; margin-left: -13px; }
+.dot-list > span { position: relative; min-width: 0; padding-left: 13px; overflow-wrap: anywhere; }
+.dot-list > span:not(.tag)::before { content: '·'; position: absolute; left: 0; width: 13px; text-align: center; }
+.dot-list > .tag-consent { margin-left: 13px; padding-left: 8px; }
 .client-facts { display: flex; align-items: center; flex-wrap: wrap; gap: 0 20px; color: var(--text-2); font-size: 15px; }
 .client-facts > span { padding: 4px 0; }
 .client-facts .next-appt { font-size: 15px; text-align: left; }
@@ -806,11 +814,13 @@ button.photo:active { border-color: var(--accent); }
 /* Fiches / Agenda : les deux grandes portes de l'espace coiffeur, plus visibles que les réglages à droite. */
 .space-switch { display: flex; gap: 4px; margin-left: 8px; padding: 4px; border: 1px solid var(--line-2); border-radius: 16px; }
 .space-btn {
+  --space-pad: 22px;
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 10px;
   min-height: 52px;
-  padding: 8px 22px;
+  padding: 8px var(--space-pad);
   border: none;
   border-radius: 12px;
   background: transparent;
@@ -819,7 +829,9 @@ button.photo:active { border-color: var(--accent); }
   font-weight: 600;
 }
 .space-btn:active { background: var(--panel); }
-.space-btn[aria-pressed='true'] { background: var(--panel-2); color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent); }
+.space-btn[aria-pressed='true'] { background: var(--panel-2); color: var(--accent); }
+/* Trait d'or droit sous le mot, comme sous les onglets (une ombre interne suivait l'arrondi du bouton). */
+.space-btn[aria-pressed='true']::after { content: ''; position: absolute; inset: auto var(--space-pad) 6px; height: 2px; border-radius: 1px; background: var(--accent); }
 
 .agenda { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; padding: 16px 24px 20px; overflow-y: auto; }
 .agenda-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
@@ -877,8 +889,8 @@ button.photo:active { border-color: var(--accent); }
   to { outline: 3px solid transparent; outline-offset: 1px; }
 }
 /* Sous les rendez-vous : il ne barre plus les prénoms. */
-.now-line { position: absolute; left: -3px; right: 0; border-top: 2px solid var(--accent); pointer-events: none; }
-.now-line::before { content: ''; position: absolute; left: 0; top: -5px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.now-line { position: absolute; left: -3px; right: 0; height: 2px; background: linear-gradient(90deg, var(--accent) calc(100% - 16px), transparent calc(100% - 3px)); pointer-events: none; }
+.now-line::before { content: ''; position: absolute; left: 0; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
 
 .appt-block {
   position: absolute;
@@ -904,7 +916,7 @@ button.photo:active { border-color: var(--accent); }
 .appt-block.moving { outline: 2px dashed var(--accent); outline-offset: 1px; }
 /* Rendez-vous qui finit après 18 h : coupé à la fermeture, bas en pointillés, l'heure de fin écrite. */
 .appt-block.late { border-bottom: 2px dashed var(--accent); border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
-.appt-sub.appt-end { color: var(--accent); }
+.appt-sub.appt-end { color: var(--accent-hi); } /* l'or rose n'atteint pas 4,5:1 sur un rendez-vous teinté */
 /* Un quart d'heure : le prénom seul, centré, sans être rogné. */
 .appt-block.short { justify-content: center; padding-block: 0; }
 .appt-block.short .appt-name { font-size: 12px; line-height: 1.1; }
@@ -932,7 +944,7 @@ button.photo:active { border-color: var(--accent); }
   .topbar { padding: 12px 20px; gap: 12px; }
   .today-date { display: none; }
   .space-switch { margin-left: 0; }
-  .space-btn { padding: 8px 16px; }
+  .space-btn { --space-pad: 16px; }
   .lock-btn { padding-inline: 12px; min-width: 48px; justify-content: center; }
   .lock-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .draft-foot { flex-wrap: wrap; }

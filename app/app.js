@@ -93,10 +93,15 @@ const hasName = (c) => Boolean(c?.firstName || c?.lastName);
 const fullName = (c) => [c?.firstName, c?.lastName].filter(Boolean).join(' ') || 'Client sans nom';
 
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
-const fmtToday = () => cap(new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date()));
-const fmtDay = (iso) => new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long' }).format(new Date(iso));
-const fmtDayShort = (iso) => new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' }).format(new Date(iso));
-const fmtDateMid = (iso) => new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(iso));
+// Fin de ligne propre : « 11 novembre » et « il y a 3 sem. » ne se coupent pas, et le point médian
+// reste au bout de la ligne au lieu d'ouvrir la suivante.
+const nb = (s) => s.replaceAll(' ', '\u00a0');
+const nbDay = (s) => s.replace(/(\d) (?=\p{L})/u, '$1\u00a0');
+const SEP = '\u00a0· ';
+const fmtToday = () => cap(nbDay(new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())));
+const fmtDay = (iso) => nbDay(new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long' }).format(new Date(iso)));
+const fmtDayShort = (iso) => nbDay(new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' }).format(new Date(iso)));
+const fmtDateMid = (iso) => nbDay(new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(iso)));
 const fmtDateLong = (iso) => cap(fmtDateMid(iso));
 const fmtTime = (iso) => new Intl.DateTimeFormat('fr-FR', { hour: 'numeric', minute: '2-digit' }).format(new Date(iso)).replace(':', ' h ');
 const fmtClock = () => fmtTime(new Date().toISOString());
@@ -109,11 +114,11 @@ function ago(iso) {
   const days = Math.round((today - start) / 86400000);
   if (days <= 0) return 'aujourd’hui';
   if (days === 1) return 'hier';
-  if (days < 14) return `il y a ${days} j`;
-  if (days < 60) return `il y a ${Math.round(days / 7)} sem.`;
-  if (days < 365) return `il y a ${Math.round(days / 30)} mois`;
+  if (days < 14) return nb(`il y a ${days} j`);
+  if (days < 60) return nb(`il y a ${Math.round(days / 7)} sem.`);
+  if (days < 365) return nb(`il y a ${Math.round(days / 30)} mois`);
   const y = Math.round(days / 365);
-  return `il y a ${y} an${y > 1 ? 's' : ''}`;
+  return nb(`il y a ${y} an${y > 1 ? 's' : ''}`);
 }
 
 const hasFormula = (f) => f && Object.values(f).some((v) => String(v).trim());
@@ -453,7 +458,7 @@ function viewCoiffeur() {
 
 // ---------- Agenda ----------
 
-const fmtDayTitle = (iso) => cap(new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(iso)));
+const fmtDayTitle = (iso) => cap(nbDay(new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(iso))));
 const hasLetters = (s) => /\p{L}/u.test(s);
 const MAX_CHOICES = 4;
 
@@ -1103,7 +1108,7 @@ function viewResults() {
           last ? `dernière visite ${ago(last)}` : 'aucune visite'
         ]
           .filter(Boolean)
-          .join(' · ');
+          .join(SEP);
         const tags = [
           S.pending.get(c.id) ? `<span class="tag tag-pending">${icon('clock', 13)} À valider</span>` : '',
           S.drafts.has(c.id) || S.savedDrafts.has(c.id) ? '<span class="tag">Visite en cours</span>' : '',
@@ -1149,14 +1154,14 @@ function viewEmpty() {
   <div class="today-list">
     ${viewValidated()}
     <h1 class="serif">Aujourd’hui</h1>
-    <p class="muted">${fmtDayTitle(now.toISOString())} · ${n} rendez-vous</p>
+    <p class="muted">${fmtDayTitle(now.toISOString())}${SEP}${n} rendez-vous</p>
     <div class="today-rows">
       ${list
         .map((a) => {
           const end = core.endOf(a);
           const done = end <= now;
           const live = !done && new Date(a.start) <= now;
-          const info = [a.services.join(', '), `${core.fmtDuration(a.duration)}, jusqu’à ${fmtTime(end.toISOString())}`].filter(Boolean).join(' · ');
+          const info = [a.services.join(', '), `${core.fmtDuration(a.duration)}, jusqu’à ${fmtTime(end.toISOString())}`].filter(Boolean).join(SEP);
           const state = done ? 'terminé' : live ? 'en cours' : a.id === next ? 'prochain rendez-vous' : '';
           return `<button type="button" class="today-row${done ? ' past' : ''}${a.id === next ? ' next' : ''}" data-action="today-appt" data-id="${a.id}">
             <span class="today-time">${fmtTime(a.start)}</span>
@@ -1210,7 +1215,7 @@ const keptText = (n) =>
 
 function lastColorLine() {
   const lc = core.lastColor(S.history, new Date());
-  return lc ? `<span>Dernière couleur ${core.agoText(lc.days)} (${fmtDayShort(lc.date)})</span>` : '';
+  return lc ? `<span>Dernière couleur ${nb(core.agoText(lc.days))} (${fmtDayShort(lc.date)})</span>` : '';
 }
 
 // « C'est quand, mon rendez-vous ? » : la réponse est sur la fiche ; la toucher ouvre la semaine.
@@ -1222,15 +1227,17 @@ function nextApptLine() {
 
 function viewClientDetail() {
   const c = S.client;
-  const contact = [fmtPhone(c.phone), c.email].filter(Boolean).join(' · ') || 'Coordonnées à compléter par le client';
-  const consent = consentLine(c);
+  // Coordonnées puis accord : chaque élément reste entier, et le point médian disparaît en début de ligne (.dot-list).
+  const meta = [fmtPhone(c.phone), c.email].filter(Boolean);
+  if (!meta.length) meta.push('Coordonnées à compléter par le client');
+  if (c.consentAt) meta.push(consentLine(c));
   // En-tête ramassé : qui (coordonnées, accord), puis ce qui sert au travail (couleur, rendez-vous).
   const facts = [lastColorLine(), nextApptLine()].filter(Boolean);
   return `
   <div class="client-head">
     <div class="client-id">
       <h1 class="serif${fullName(c).length > 28 ? ' is-long' : ''}">${esc(fullName(c))}</h1>
-      <p class="client-meta">${esc(contact)}${consent ? ` · ${consent}` : ''}${c.consentAt ? '' : ` ${CONSENT_TAG}`}</p>
+      <p class="client-meta"><span class="dot-list">${meta.map((m) => `<span>${esc(m)}</span>`).join('')}${c.consentAt ? '' : CONSENT_TAG}</span></p>
       ${facts.length ? `<div class="client-facts">${facts.join('')}</div>` : ''}
     </div>
     <button type="button" class="btn btn-ghost" data-action="edit-client">${icon('edit', 18)} Modifier la fiche</button>
@@ -1276,8 +1283,8 @@ function viewDraft() {
             <span>${icon('clock', 18)} La visite <strong>${whenOf(waiting)}</strong> (${esc(waiting.services.join(', '))}) attend la validation du client.</span>
             <button type="button" class="btn btn-accent" data-action="rehand" data-visit="${waiting.id}">${icon('tablet', 18)} Repasser la tablette</button>
           </div>`
-        : lastVisit && !d.editId && !d.services.size && !isToday(lastVisit.date)
-          ? `<button type="button" class="link link-start" data-action="reuse-services">${icon('undo', 16)} Mêmes prestations que le ${fmtDayShort(lastVisit.date)} (${esc(lastVisit.services.join(', '))})</button>`
+        : lastVisit && !d.editId && !isToday(lastVisit.date)
+          ? `<button type="button" class="link link-start" data-action="reuse-services"${d.services.size ? ' disabled' : ''}>${icon('undo', 16)} Mêmes prestations que le ${fmtDayShort(lastVisit.date)} (${esc(lastVisit.services.join(', '))})</button>`
           : ''
     }
     <div class="services" role="group" aria-label="Prestations" aria-describedby="services-err">
@@ -1361,7 +1368,7 @@ function viewHistory() {
           ${pending ? `<span class="badge badge-pending">${icon('clock', 14)} Non validée par le client</span>` : ''}
         </div>
         <div class="chips">${v.services.map((s) => `<span class="chip">${esc(s)}</span>`).join('')}</div>
-        ${hasFormula(f) ? `<p class="visit-line"><span class="muted">Couleur :</span> ${esc([f.brand, f.shade, f.oxidant, f.time].filter(Boolean).join(' · '))}</p>` : ''}
+        ${hasFormula(f) ? `<p class="visit-line"><span class="muted">Couleur :</span> ${esc([f.brand, f.shade, f.oxidant, f.time].filter(Boolean).join(SEP))}</p>` : ''}
         ${v.note ? `<p class="visit-line"><span class="muted">Note :</span> ${esc(v.note)}</p>` : ''}
         <div class="photo-row small" data-photos-for="${v.id}"></div>
         <div class="visit-actions">
@@ -2303,6 +2310,8 @@ const actions = {
     }
     el.setAttribute('aria-pressed', S.draft.services.has(s));
     app.querySelector('#services-err').textContent = '';
+    const reuse = app.querySelector('[data-action="reuse-services"]');
+    if (reuse) reuse.disabled = S.draft.services.size > 0;
   },
   'reuse-services': () => {
     S.draft.services = new Set(S.history[0].services);
