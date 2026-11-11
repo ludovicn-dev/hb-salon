@@ -318,6 +318,11 @@ h2.label { font-weight: 400; }
 .foot-note { flex: 0 1 380px; color: var(--text-2); font-size: 14px; line-height: 1.4; text-align: right; }
 .draft-foot > .btn-lg { flex-shrink: 0; }
 .result.unnamed .result-name { font-style: italic; font-weight: 500; color: var(--text-2); }
+/* Retour à la journée, en tête de la colonne : même dessin qu'une fiche, or quand c'est l'écran affiché. */
+.today-entry { flex-shrink: 0; }
+.today-entry .result-name { display: flex; align-items: center; gap: 8px; }
+.today-entry .ic { color: var(--muted); }
+.today-entry.active .ic { color: var(--accent); }
 
 .btn-new {
   display: flex;
@@ -405,6 +410,10 @@ h2.label { font-weight: 400; }
   border: 1.5px solid var(--accent);
 }
 .waiting > span { flex: 1; min-width: 240px; }
+.waiting .btn-ghost { border-color: var(--control-line-2); }
+/* Visite du jour déjà validée : rappel neutre au-dessus des prestations, avec « Modifier ». */
+.visit-done { flex-wrap: wrap; justify-content: space-between; padding-block: 2px; }
+.visit-done > span { flex: 1; min-width: 220px; }
 .waiting > span .ic { vertical-align: -3px; margin-right: 4px; color: var(--accent); }
 .notice-inline { margin-top: 4px; }
 
@@ -554,15 +563,10 @@ button.photo:active { border-color: var(--accent); }
   gap: 20px;
   padding: 16px 0 24px;
   background: linear-gradient(to bottom, transparent, var(--bg) 30%);
+  pointer-events: none; /* le fondu ne bloque pas les champs qu'il recouvre : seuls le bouton et la note se touchent */
 }
+.draft-foot > * { pointer-events: auto; }
 /* Clavier ouvert en paysage : l'écran ne fait plus que ~400 px, le bouton reprend sa place en fin de fiche. */
-/* Rappel de l'allergie près de la formule : seulement quand l'encadré du haut peut être hors de vue
-   (clavier ouvert en paysage, formule loin sous l'en-tête en portrait) ; sinon l'alerte la plus grave
-   de la fiche se lirait deux fois. */
-.allergy-formula { display: none; }
-@media (max-height: 520px), (orientation: portrait) {
-  .allergy-formula { display: flex; }
-}
 @media (max-height: 520px) {
   .draft-foot { position: static; background: none; }
   .detail { scroll-padding-bottom: 16px; }
@@ -863,7 +867,9 @@ button.photo:active { border-color: var(--accent); }
 .hour.last { transform: translateY(-100%); }
 
 /* Le temps à venir est clair (on peut y noter un rendez-vous), le temps écoulé reste au fond de la page. */
-.day-col { position: relative; background: var(--panel); border-radius: 6px; }
+.day-col { position: relative; background: var(--panel); border-radius: 6px; container-type: inline-size; }
+/* Colonne étroite (portrait) : la prestation ne tenait qu'en « … », le prénom garde toute la ligne. */
+@container (max-width: 150px) { .appt-svc { display: none; } }
 .day-col.is-today { background: color-mix(in srgb, var(--panel) 55%, var(--panel-2)); }
 /* Temps écoulé : fond de page hachuré, nettement à part du temps où l'on peut encore noter. */
 .past-veil {
@@ -1035,4 +1041,23 @@ button.photo:active { border-color: var(--accent); }
 .today-who strong { font-size: 17px; }
 .today-who span { color: var(--muted); font-size: 14px; }
 .today-allergy { display: inline-flex; align-items: center; gap: 6px; color: var(--error); font-weight: 700; font-size: 14px; }
+/* État de la visite sur la ligne du jour : validée (coche or), ou rendez-vous passé sans visite notée. */
+.today-state { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); font-weight: 600; font-size: 14px; white-space: nowrap; }
+.today-state .ic { color: var(--accent); }
+.today-state.is-none { color: var(--muted); font-weight: 500; }
+.today-row .tag-pending { flex-shrink: 0; padding: 4px 10px; white-space: nowrap; }
 .today-live { display: inline-flex; align-items: center; gap: 6px; color: var(--accent); font-weight: 700; font-size: 14px; }
+
+/* ---------- Clavier ouvert en paysage ---------- */
+
+/* La recherche se fait clavier ouvert : toute la colonne défile sous le champ (plus d'une fiche et demie visible),
+   une fiche tient sur une ligne, et « Nouveau client » suit la liste au lieu de rester épinglé. */
+@media (max-height: 520px) and (min-width: 701px) {
+  .side { padding-block: 12px; gap: 8px; overflow-y: auto; }
+  .side > .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .today-entry { display: none; }
+  .search { position: sticky; top: 0; z-index: 1; flex-shrink: 0; }
+  .results { flex: none; overflow: visible; }
+  .result { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-height: 44px; padding: 8px 14px; }
+  .btn-new { flex-shrink: 0; }
+}

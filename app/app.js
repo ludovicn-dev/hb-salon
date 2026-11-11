@@ -61,6 +61,8 @@ const S = {
   refused: null, // sélecteur du créneau touché en vain pendant un déplacement (il luit en corail)
   nextAppt: null, // prochain rendez-vous du client affiché
   todayAppts: [], // rendez-vous du jour (accueil de l'espace coiffeur)
+  todayVisits: new Map(), // clientId -> visite du jour (celle « à valider » d'abord, sinon la dernière validée)
+  lockedModal: null, // fenêtre ouverte au verrouillage automatique, rouverte après le code
   modal: null, // { type: 'client' | 'backup' | 'confirm-delete' | 'photo' | 'appt' | ..., ... }
   modalReturn: null // élément à refocaliser à la fermeture
 };
@@ -93,6 +95,8 @@ const hasName = (c) => Boolean(c?.firstName || c?.lastName);
 const fullName = (c) => [c?.firstName, c?.lastName].filter(Boolean).join(' ') || 'Client sans nom';
 
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+// Nom tapé tout en minuscules dans la recherche : repris avec ses majuscules (« zoé dupont » -> « Zoé Dupont »).
+const capName = (s) => (s === s.toLowerCase() ? s.replace(/(^|[\s'’-])\p{L}/gu, (x) => x.toUpperCase()) : s);
 // Fin de ligne propre : « 11 novembre » et « il y a 3 sem. » ne se coupent pas, et le point médian
 // reste au bout de la ligne au lieu d'ouvrir la suivante.
 const nb = (s) => s.replaceAll(' ', '\u00a0');
@@ -203,6 +207,7 @@ function selectorOf(el) {
 // ---------- Icônes ----------
 
 const ICONS = {
+  home: '<path d="M4 11l8-7 8 7"/><path d="M6 9.5V20h12V9.5"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   minus: '<path d="M5 12h14"/>',
@@ -255,12 +260,23 @@ function go(view) {
   if (view === 'thanks') timer = setTimeout(() => go('welcome'), THANKS_MS);
 }
 
+// Fenêtre ouverte au moment du verrouillage automatique (fiche en cours de saisie, rendez-vous) :
+// elle est rouverte telle quelle après le code, avec ce qui était tapé.
+function heldModal() {
+  const m = S.modal;
+  if (m?.type === 'appt') return m;
+  if (m?.type !== 'client') return null;
+  const form = app.querySelector('[data-form="client"]');
+  return { ...m, client: { ...m.client, ...(form ? Object.fromEntries(new FormData(form)) : {}) } };
+}
+
 function bumpIdle() {
   if (S.view === 'coiffeur') {
     clearTimeout(timer);
     // La visite en cours est gardée.
     timer = setTimeout(() => {
       S.autoLocked = true;
+      S.lockedModal = heldModal();
       go('welcome');
     }, COIFFEUR_IDLE_MS);
     return;
@@ -321,7 +337,7 @@ function closeModal() {
 
 // ---------- Rendu ----------
 
-const SCROLLERS = ['.detail', '.results', '.coiffeur-body', '.client', '.client-form', '.dialog', '.agenda'];
+const SCROLLERS = ['.detail', '.side', '.results', '.coiffeur-body', '.client', '.client-form', '.dialog', '.agenda'];
 
 // Redessine l'écran en gardant la position de défilement et le focus (sauf changement d'écran).
 function render({ top = false, focus = null } = {}) {
@@ -441,6 +457,7 @@ function viewCoiffeur() {
         ? `<main class="agenda">${viewAgenda()}</main>`
         : `<div class="coiffeur-body">
       <aside class="side">
+        ${viewTodayEntry()}
         <label for="search" class="label">Client</label>
         <div class="search">
           ${icon('search', 18)}
@@ -454,6 +471,17 @@ function viewCoiffeur() {
     </div>`
     }
   </div>`;
+}
+
+// Retour à la journée depuis n'importe quelle fiche : toujours en tête de la colonne.
+function viewTodayEntry() {
+  const n = S.todayAppts.length;
+  const wait = [...S.todayVisits.values()].filter((v) => v.status === 'pending').length;
+  const sub = [n ? `${n} rendez-vous` : 'aucun rendez-vous', wait ? `${wait} à valider` : ''].filter(Boolean).join(SEP);
+  return `<button type="button" class="result today-entry${S.client ? '' : ' active'}" data-action="today"${S.client ? '' : ' aria-current="page"'}>
+    <span class="result-name">${icon('home', 18)} Aujourd’hui</span>
+    <span class="result-sub">${esc(sub)}</span>
+  </button>`;
 }
 
 // ---------- Agenda ----------
@@ -580,7 +608,7 @@ function viewApptWho(m) {
   const chosen = m.clientId && S.clients.find((c) => c.id === m.clientId);
   const chip = (c) => `<button type="button" class="chip" data-action="appt-who" data-id="${c.id}" role="radio" aria-checked="${c.id === m.clientId}">
       <span>${esc(fullName(c))}</span>${c.phone ? `<small>${esc(fmtPhone(c.phone))}</small>` : ''}</button>`;
-  const first = m.firstName || (hasLetters(m.query) ? m.query.trim() : '');
+  const first = m.firstName || (hasLetters(m.query) ? capName(m.query.trim()) : '');
   return `
     ${
       norm(m.query)
@@ -661,7 +689,7 @@ function viewApptDialog(m) {
         ${a && !done ? `<button type="button" class="btn btn-danger-outline btn-sm" data-action="appt-cancel">${icon('trash', 16)} Annuler le rendez-vous</button>` : ''}
         <div class="actions-main">
           <button type="button" class="btn btn-ghost" data-action="close-modal">${closeLabel}</button>
-          <button type="submit" class="btn btn-accent" id="appt-submit">${m.lateOk ? 'Enregistrer quand même' : 'Enregistrer'}</button>
+          <button type="submit" class="btn ${a && !m.changed ? 'btn-ghost' : 'btn-accent'}" id="appt-submit"${a && !m.changed ? ' disabled' : ''}>${m.lateOk ? 'Enregistrer quand même' : 'Enregistrer'}</button>
         </div>
       </div>
     </form>`;
@@ -705,7 +733,7 @@ async function saveAppt(m) {
     announce(msg);
   };
   let client = a ? apptClient(a) : m.clientId && S.clients.find((c) => c.id === m.clientId);
-  const firstName = (m.firstName || (hasLetters(m.query || '') ? m.query : '')).trim();
+  const firstName = (m.firstName || (hasLetters(m.query || '') ? capName(m.query.trim()) : '')).trim();
   // Des fiches proposées mais aucune touchée : pas de nouvelle fiche par surprise (elle n'aurait pas l'allergie).
   const matches = !a && !client && !m.other ? matchClients(m.query) : [];
   if (matches.length) {
@@ -790,7 +818,6 @@ async function openApptClient(a) {
   S.modalReturn = null;
   if (apptClient(a)) {
     await selectClient(a.clientId);
-    if (!draftHasContent(S.draft)) S.draft.services = new Set(a.services);
     render({ top: true, focus: '.client-head h1' });
     return;
   }
@@ -1093,7 +1120,7 @@ function viewResults() {
   if (!list.length) {
     // Le numéro ou le nom tapé sert à créer la fiche, sans le retaper.
     const q = S.query.trim();
-    const label = hasLetters(q) ? `Créer la fiche « ${esc(q)} »` : digits(q).length >= 6 ? `Créer la fiche ${esc(fmtPhone(q))}` : '';
+    const label = hasLetters(q) ? `Créer la fiche « ${esc(capName(q))} »` : digits(q).length >= 6 ? `Créer la fiche ${esc(fmtPhone(q))}` : '';
     return `<p class="muted small pad">Aucune fiche ne correspond.</p>
       ${label ? `<button type="button" class="btn-new btn-new-found" data-action="new-client-search">${icon('plus', 18)} <span>${label}</span></button>` : ''}`;
   }
@@ -1148,7 +1175,9 @@ function viewEmpty() {
     }
   </div>`;
   }
-  const next = core.nextOfDay(list, now);
+  // Liste du jour = liste de contrôle : chaque ligne dit où en est la visite ; l'or va au premier client pas encore fait.
+  const visitOf = (a) => (a.clientId ? S.todayVisits.get(a.clientId) : null);
+  const next = core.nextOfDay(list.filter((a) => visitOf(a)?.status !== 'done'), now);
   const n = list.length;
   return `
   <div class="today-list">
@@ -1162,13 +1191,23 @@ function viewEmpty() {
           const done = end <= now;
           const live = !done && new Date(a.start) <= now;
           const info = [a.services.join(', '), `${core.fmtDuration(a.duration)}, jusqu’à ${fmtTime(end.toISOString())}`].filter(Boolean).join(SEP);
+          const v = visitOf(a);
           const state = done ? 'terminé' : live ? 'en cours' : a.id === next ? 'prochain rendez-vous' : '';
-          return `<button type="button" class="today-row${done ? ' past' : ''}${a.id === next ? ' next' : ''}" data-action="today-appt" data-id="${a.id}">
+          const visit =
+            v?.status === 'pending'
+              ? `<span class="tag tag-pending">${icon('clock', 13)} À valider</span>`
+              : v
+                ? `<span class="today-state">${icon('check', 16)} Validée${v.validatedAt ? ` à ${fmtTime(v.validatedAt)}` : ''}</span>`
+                : done
+                  ? '<span class="today-state is-none">Pas de visite notée</span>'
+                  : '';
+          const shown = !visit && live; // « En cours » est écrit : inutile de le redire au lecteur d'écran
+          return `<button type="button" class="today-row${done || v?.status === 'done' ? ' past' : ''}${a.id === next ? ' next' : ''}" data-action="today-appt" data-id="${a.id}">
             <span class="today-time">${fmtTime(a.start)}</span>
             <span class="today-who"><strong>${esc(apptName(a, true))}</strong><span>${esc(info)}</span></span>
-            ${live ? `<span class="today-live">${icon('clock', 16)} En cours</span>` : ''}
+            ${visit || (live ? `<span class="today-live">${icon('clock', 16)} En cours</span>` : '')}
             ${apptAllergy(a) ? `<span class="today-allergy">${icon('alert', 16)} Allergie</span>` : ''}
-            ${state ? `<span class="sr-only">, ${state}</span>` : ''}
+            ${state && !shown ? `<span class="sr-only">, ${state}</span>` : ''}
           </button>`;
         })
         .join('')}
@@ -1222,7 +1261,10 @@ function lastColorLine() {
 function nextApptLine() {
   const a = S.nextAppt;
   if (!a) return '';
-  return `<button type="button" class="link next-appt" data-action="show-appt" data-id="${a.id}">${icon('calendar', 16)}<span>Prochain rendez-vous : ${fmtDayTitle(a.start).toLowerCase()} à ${fmtTime(a.start)}<span class="sr-only">, voir dans l’agenda</span></span></button>`;
+  const label = isToday(a.start)
+    ? `Rendez-vous aujourd’hui à ${fmtTime(a.start)}${new Date(a.start) <= new Date() ? ' (en cours)' : ''}`
+    : `Prochain rendez-vous : ${fmtDayTitle(a.start).toLowerCase()} à ${fmtTime(a.start)}`;
+  return `<button type="button" class="link next-appt" data-action="show-appt" data-id="${a.id}">${icon('calendar', 16)}<span>${label}<span class="sr-only">, voir dans l’agenda</span></span></button>`;
 }
 
 function viewClientDetail() {
@@ -1264,7 +1306,11 @@ function viewDraft() {
   const f = d.formula;
   const showFormula = d.services.has('Coloration') || hasFormula(f);
   const lastVisit = S.history[0];
-  const waiting = !d.editId && !draftHasContent(d) ? latestPending() : null;
+  // Visite déjà passée au client (en attente ou validée aujourd'hui) : rappelée au-dessus des prestations.
+  // Le rappel ne disparaît pas quand on coche : rien ne saute sous le doigt, seul le bouton or change de place.
+  const fresh = !d.editId && !draftHasContent(d);
+  const waiting = d.editId ? null : latestPending();
+  const doneToday = d.editId || waiting ? null : S.history.find((v) => v.status === 'done' && isToday(v.date));
   const field = (key, label, ph) =>
     `<label class="field">${label}<input data-bind="formula.${key}" value="${esc(f[key])}" placeholder="${ph}" autocomplete="off"></label>`;
   return `
@@ -1281,8 +1327,11 @@ function viewDraft() {
       waiting
         ? `<div class="waiting">
             <span>${icon('clock', 18)} La visite <strong>${whenOf(waiting)}</strong> (${esc(waiting.services.join(', '))}) attend la validation du client.</span>
-            <button type="button" class="btn btn-accent" data-action="rehand" data-visit="${waiting.id}">${icon('tablet', 18)} Repasser la tablette</button>
+            <button type="button" class="btn ${fresh ? 'btn-accent' : 'btn-ghost'}" data-action="rehand" data-visit="${waiting.id}">${icon('tablet', 18)} Repasser la tablette</button>
           </div>`
+        : doneToday
+          ? `<p class="done-line visit-done">${icon('check', 18)}<span>Visite d’aujourd’hui (${esc(doneToday.services.join(', '))}) validée${doneToday.validatedAt ? ` à ${fmtTime(doneToday.validatedAt)}` : ''}.</span>
+              <button type="button" class="link" data-action="edit-visit" data-visit="${doneToday.id}">${icon('edit', 16)} Modifier</button></p>`
         : lastVisit && !d.editId && !isToday(lastVisit.date)
           ? `<button type="button" class="link link-start" data-action="reuse-services"${d.services.size ? ' disabled' : ''}>${icon('undo', 16)} Mêmes prestations que le ${fmtDayShort(lastVisit.date)} (${esc(lastVisit.services.join(', '))})</button>`
           : ''
@@ -1302,7 +1351,7 @@ function viewDraft() {
         ${S.lastFormula && !d.editId ? `<button type="button" class="link" data-action="reuse-formula">${icon('undo', 16)} Reprendre la formule du ${fmtDayShort(S.lastFormula.date)}</button>` : ''}
       </div>
       ${
-        // Rappel au plus près de la formule : l'encadré du haut sort de l'écran quand le clavier est ouvert.
+        // Rappel au plus près de la formule : l'encadré du haut sort de l'écran dès qu'on fait défiler jusqu'ici.
         S.client?.allergies
           ? `<div class="allergy allergy-mini allergy-formula">${icon('alert', 18)}<p><strong>Allergies</strong> <span>${esc(S.client.allergies)}</span></p></div>`
           : ''
@@ -1348,7 +1397,7 @@ function viewDraft() {
       ${
         d.editId
           ? `<button type="button" class="btn btn-accent btn-lg" data-action="save-edit">${icon('check', 20)} Enregistrer les modifications</button>`
-          : waiting
+          : (waiting || doneToday) && fresh
             ? `<button type="button" class="btn btn-ghost btn-lg" data-action="handover">Nouvelle visite : passer la tablette ${icon('arrow', 20)}</button>`
             : `<button type="button" class="btn btn-accent btn-lg" data-action="handover">Passer la tablette au client ${icon('arrow', 20)}</button>`
       }
@@ -1418,8 +1467,8 @@ function viewClient() {
           <p class="muted">Votre coiffeur vous confie la tablette : ${help}</p>
         </div>
         <div class="grid2">
-          ${inputField('field field-lg', 'firstName', 'Prénom', 'text', c.firstName, 'autocomplete="given-name" required')}
-          ${inputField('field field-lg', 'lastName', 'Nom (facultatif)', 'text', c.lastName, 'autocomplete="family-name"')}
+          ${inputField('field field-lg', 'firstName', 'Prénom', 'text', c.firstName, 'autocomplete="given-name" autocapitalize="words" required')}
+          ${inputField('field field-lg', 'lastName', 'Nom (facultatif)', 'text', c.lastName, 'autocomplete="family-name" autocapitalize="words"')}
         </div>
         <div class="grid-contact">
           ${inputField('field field-lg', 'phone', 'Téléphone', 'tel', c.phone, 'autocomplete="tel" inputmode="tel" required')}
@@ -1535,8 +1584,8 @@ function viewModal() {
       <form data-form="client" class="dialog" novalidate>
         <h2 class="serif" id="dlg-title">${c.id ? 'Modifier la fiche' : 'Nouveau client'}</h2>
         <div class="grid2">
-          ${input('firstName', 'Prénom', 'text', 'data-autofocus autocomplete="off" required')}
-          ${input('lastName', 'Nom (facultatif)', 'text', 'autocomplete="off"')}
+          ${input('firstName', 'Prénom', 'text', 'data-autofocus autocomplete="off" autocapitalize="words" required')}
+          ${input('lastName', 'Nom (facultatif)', 'text', 'autocomplete="off" autocapitalize="words"')}
           ${input('phone', 'Téléphone', 'tel', 'inputmode="tel" autocomplete="off" required')}
           ${input('email', 'E-mail (facultatif)', 'email', 'inputmode="email" autocomplete="off"')}
         </div>
@@ -1557,6 +1606,7 @@ function viewModal() {
     // Même franchise que la fenêtre RGPD : ce qui part, ce qui reste.
     const parts = [
       'ses coordonnées',
+      m.draft ? 'la visite en cours' : '',
       m.visits ? (m.visits > 1 ? `ses ${m.visits} visites avec formules, notes et photos` : 'sa visite avec formule, note et photos') : '',
       m.past ? 'ses rendez-vous passés' : ''
     ].filter(Boolean);
@@ -1693,7 +1743,13 @@ async function loadClients() {
   S.clients = clients;
   S.lastVisit = new Map();
   S.pending = new Map();
+  S.todayVisits = new Map();
   for (const v of visits) {
+    if (isToday(v.date)) {
+      const t = S.todayVisits.get(v.clientId);
+      const better = !t || (v.status === 'pending') > (t.status === 'pending') || (v.status === t.status && v.date > t.date);
+      if (better) S.todayVisits.set(v.clientId, v);
+    }
     const cur = S.lastVisit.get(v.clientId);
     if (!cur || v.date > cur) S.lastVisit.set(v.clientId, v.date);
     if (v.status === 'pending') S.pending.set(v.clientId, (S.pending.get(v.clientId) || 0) + 1);
@@ -1706,13 +1762,17 @@ const emptyDraft = () => ({ services: new Set(), formula: { brand: '', shade: ''
 const dropDraft = (d) => d?.photos.forEach((p) => URL.revokeObjectURL(p.url));
 const draftHasContent = (d) => Boolean(d && (d.editId || d.services.size || d.note.trim() || d.photos.length || hasFormula(d.formula)));
 
+// Brouillon qui ne contient que les prestations cochées d'avance depuis le rendez-vous du jour.
+const isAuto = (d) =>
+  Boolean(d?.auto && !d.editId && !d.note.trim() && !d.photos.length && !hasFormula(d.formula) && d.services.size === d.auto.length && d.auto.every((s) => d.services.has(s)));
+
 // Visites du jour en cours (prestations, formule, note, photos) recopiées sur la tablette : si Android
 // ferme l'appli (appareil photo, manque de mémoire), on les retrouve sur la fiche au retour. Rangées
 // avec les réglages, qui ne partent jamais en ligne ; oubliées le lendemain.
 const DRAFTS_KEY = 'drafts';
 let draftsTimer = null;
 const keptOf = (d) =>
-  d && !d.editId && draftHasContent(d)
+  d && !d.editId && draftHasContent(d) && !isAuto(d)
     ? { services: [...d.services], formula: { ...d.formula }, note: d.note, photos: d.photos.filter((p) => !p.id).map(({ blob, thumb }) => ({ blob, thumb })) }
     : null;
 
@@ -1755,7 +1815,7 @@ function restoreDraft(id) {
 // Met de côté la visite en cours du client affiché, pour la retrouver en revenant sur sa fiche.
 function parkDraft() {
   if (!S.clientId || !S.draft) return;
-  if (draftHasContent(S.draft) || S.stash) S.drafts.set(S.clientId, { draft: S.draft, stash: S.stash });
+  if ((draftHasContent(S.draft) && !isAuto(S.draft)) || S.stash) S.drafts.set(S.clientId, { draft: S.draft, stash: S.stash });
   else S.drafts.delete(S.clientId);
 }
 
@@ -1785,6 +1845,19 @@ async function selectClient(id) {
   S.draft = saved?.draft || emptyDraft();
   S.stash = saved?.stash || null;
   S.draftError = '';
+  precheck(id);
+}
+
+// Prestations prévues au rendez-vous du jour, cochées d'avance tant que sa visite n'est pas faite.
+// Un simple coup d'œil à la fiche ne laisse pas de « visite en cours » derrière lui (isAuto).
+function precheck(clientId) {
+  if (draftHasContent(S.draft) || S.todayVisits.has(clientId)) return;
+  const now = new Date();
+  const mine = S.todayAppts.filter((a) => a.clientId === clientId).sort((a, b) => a.start.localeCompare(b.start));
+  const a = mine.find((x) => core.endOf(x) > now) || mine.at(-1);
+  if (!a?.services.length) return;
+  S.draft.services = new Set(a.services);
+  S.draft.auto = [...a.services];
 }
 
 async function showWeek(monday, focus = null) {
@@ -1815,6 +1888,11 @@ async function enterCoiffeur() {
   await refreshAppts();
   if (S.clientId) await selectClient(S.clientId);
   go('coiffeur');
+  if (S.lockedModal) {
+    const held = S.lockedModal;
+    S.lockedModal = null;
+    openModal(held);
+  }
   // Une ligne à l'accueil referme la boucle (le toast passait inaperçu) ; le lecteur d'écran l'entend.
   if (S.validated) announce(`${S.validated.name} a validé sa fiche.`);
 }
@@ -1916,7 +1994,9 @@ async function pinDigit(k) {
         startLockTicker();
         announce(lockMsg(PIN_LOCKOUT_MS / 1000));
       } else {
+        const left = PIN_MAX_TRIES - S.pinFails;
         p.error = p.mode === 'unlock' ? 'Code incorrect' : 'Code de déblocage incorrect';
+        if (left <= 2) p.error += `, encore ${left} essai${left > 1 ? 's' : ''}`;
         announce(p.error);
       }
       // Gardé en base : recharger la page ne remet pas le compteur à zéro.
@@ -2065,6 +2145,7 @@ const actions = {
   lock: () => {
     parkDraft();
     S.moving = null;
+    S.lockedModal = null;
     S.clientId = null;
     S.client = null;
     S.query = '';
@@ -2147,6 +2228,7 @@ const actions = {
     const m = S.modal;
     const s = el.dataset.service;
     m.services.has(s) ? m.services.delete(s) : m.services.add(s);
+    m.error = '';
     m.changed = true;
     m.lateOk = false;
     prefill(m);
@@ -2218,6 +2300,12 @@ const actions = {
   'week-now': () => showWeek(core.defaultWeek(new Date()), '[data-action="week-next"]'),
   'export-clients': exportClients,
   'export-visits': exportVisits,
+  // Retour à la journée : la fiche se referme, sa visite en cours est mise de côté.
+  today: () => {
+    parkDraft();
+    Object.assign(S, { clientId: null, client: null, query: '' });
+    render({ top: true, focus: '.detail h1' });
+  },
   select: async (el) => {
     await selectClient(el.dataset.id);
     render({ top: true });
@@ -2238,7 +2326,7 @@ const actions = {
     const named = hasLetters(q);
     openModal({
       type: 'client',
-      client: { firstName: named ? words[0] : '', lastName: named ? words.slice(1).join(' ') : '', phone: named ? '' : fmtPhone(q), email: '', allergies: '' }
+      client: { firstName: named ? capName(words[0]) : '', lastName: named ? capName(words.slice(1).join(' ')) : '', phone: named ? '' : fmtPhone(q), email: '', allergies: '' }
     });
   },
   'delete-client': async () => {
@@ -2255,6 +2343,7 @@ const actions = {
       named: hasName(client),
       name: fullName(client),
       visits: (await db.visitsOf(client.id)).length,
+      draft: S.drafts.has(client.id) || S.savedDrafts.has(client.id) || (S.clientId === client.id && draftHasContent(S.draft) && !isAuto(S.draft)),
       past: appts.length - upcoming,
       upcoming,
       back: { modal: { ...m, client: { ...m.client, ...typed } }, ret: S.modalReturn } // la saisie en cours est retrouvée
@@ -2304,7 +2393,8 @@ const actions = {
     const s = el.dataset.service;
     S.draft.services.has(s) ? S.draft.services.delete(s) : S.draft.services.add(s);
     S.draftError = '';
-    if (s === 'Coloration') {
+    // Redessin complet si la formule apparaît, ou si le bouton or doit changer de place (visite déjà passée au client).
+    if (s === 'Coloration' || app.querySelector('.waiting, .visit-done')) {
       render();
       return;
     }
@@ -2463,15 +2553,16 @@ const actions = {
   welcome: () => go('welcome')
 };
 
-const KEEP_NOTE = new Set(['undo', 'space', 'week-prev', 'week-next', 'week-now']);
+const KEEP_NOTE = new Set(['undo', 'space', 'week-prev', 'week-next', 'week-now', 'slot', 'appt', 'close-modal']);
 app.addEventListener('click', (e) => {
   const el = e.target.closest('[data-action]');
   if (!el || el.disabled) return;
   // Un choix touché prend le focus : le champ de saisie le perd et le clavier Android se referme.
   if (el.tagName === 'BUTTON' && el.dataset.action !== 'stay' && document.activeElement !== el) el.focus({ preventScroll: true });
-  // Le message de l'agenda (et sa possibilité de revenir en arrière) ne vaut que jusqu'à l'action suivante ;
-  // passer d'un espace ou d'une semaine à l'autre, même par erreur, ne le fait pas perdre.
-  if (S.note && !KEEP_NOTE.has(el.dataset.action)) S.note = null;
+  // Le message de l'agenda ne vaut que jusqu'à l'action suivante. Tant qu'il offre « Rétablir », il survit aux
+  // changements d'espace ou de semaine et aux appuis sans suite (créneau touché par erreur, fenêtre refermée) ;
+  // une simple confirmation, elle, ne suit pas ailleurs.
+  if (S.note && !(el.dataset.action === 'undo' || (S.note.undo && (S.modal || KEEP_NOTE.has(el.dataset.action))))) S.note = null;
   const fn = actions[el.dataset.action];
   if (fn) fn(el, e);
 });
@@ -2545,6 +2636,10 @@ app.addEventListener('input', (e) => {
     announceMatches(m);
   } else if (el.name === 'apptFirst' && S.modal?.type === 'appt') {
     S.modal.firstName = el.value;
+    if (S.modal.error) {
+      S.modal.error = '';
+      app.querySelector('#appt-err').textContent = '';
+    }
   } else if (el.matches('[data-bind]')) {
     const [a, b] = el.dataset.bind.split('.');
     if (b) S.draft[a][b] = el.value;
