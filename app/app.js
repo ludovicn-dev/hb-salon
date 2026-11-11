@@ -688,7 +688,8 @@ function viewApptDur(m) {
 
 // Chaque action à côté de ce qu'elle touche : Déplacer près de l'heure, la fiche près du nom ;
 // l'annulation seule à gauche, loin d'Enregistrer. Un rendez-vous terminé ne se déplace plus :
-// on corrige seulement ses prestations et sa durée réelle (elle sert de modèle pour les suivants).
+// on corrige ses prestations et sa durée réelle (elle sert de modèle pour les suivants), ou on le
+// supprime (client pas venu), avec « Rétablir » comme pour une annulation.
 function viewApptDialog(m) {
   const a = m.id ? findAppt(m.id) : null;
   const now = new Date();
@@ -739,7 +740,7 @@ function viewApptDialog(m) {
       <div class="stepper" role="group" aria-label="Durée" id="appt-dur"><span class="label">Durée</span>${viewApptDur(m)}</div>
       <p class="err err-inline${m.warn && m.error ? ' is-warn' : ''}" id="appt-err" role="alert">${esc(m.error)}</p>
       <div class="form-actions split-actions">
-        ${a && !done ? `<button type="button" class="btn btn-danger-outline btn-sm" data-action="appt-cancel">${icon('trash', 16)} Annuler le rendez-vous</button>` : ''}
+        ${a ? `<button type="button" class="btn btn-danger-outline btn-sm" data-action="appt-cancel">${icon('trash', 16)} ${done ? 'Supprimer le rendez-vous' : 'Annuler le rendez-vous'}</button>` : ''}
         <div class="actions-main">
           <button type="button" class="btn btn-ghost" data-action="close-modal">${closeLabel}</button>
           <button type="submit" class="btn ${a && !m.changed ? 'btn-ghost' : 'btn-accent'}" id="appt-submit"${a && !m.changed ? ' disabled' : ''}>${m.lateOk ? 'Enregistrer quand même' : 'Enregistrer'}</button>
@@ -2453,11 +2454,12 @@ const actions = {
   // Pas de fenêtre de confirmation : l'annulation se défait d'un appui (« Rétablir » sous le titre).
   'appt-cancel': async () => {
     const a = findAppt(S.modal.id);
+    const past = core.endOf(a) <= new Date(); // client pas venu, rendez-vous noté par erreur
     await db.deleteAppointment(a.id);
     await refreshAppts();
     S.modal = null;
     S.modalReturn = null;
-    const text = (name) => `Rendez-vous de ${name} annulé (${fmtDayTitle(a.start).toLowerCase()} à ${fmtTime(a.start)}).`;
+    const text = (name) => `Rendez-vous de ${name} ${past ? 'supprimé' : 'annulé'} (${fmtDayTitle(a.start).toLowerCase()} à ${fmtTime(a.start)}).`;
     agendaNote(text(apptName(a)), { kind: 'cancel', appt: a, label: 'Rétablir' });
     render({ focus: '[data-action="undo"]' });
     announce(text(apptName(a, true)));
