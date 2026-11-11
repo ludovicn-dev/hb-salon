@@ -118,3 +118,16 @@ test('chaque fichier de police existe et part en cache', () => {
     assert.ok(SW.includes(`'fonts/${f}'`), `fonts/${f} absent de la liste FONTS de sw.js`);
   }
 });
+
+// Le service worker s'exécute et sa liste d'installation contient l'appli, les thèmes et toutes les polices.
+test('le service worker met en cache l’appli, les thèmes et les polices', async () => {
+  const vm = await import('node:vm');
+  const ctx = vm.createContext({ self: { addEventListener() {} } });
+  vm.runInContext(readFileSync(new URL('../app/sw.js', import.meta.url), 'utf8'), ctx);
+  const shell = vm.runInContext('SHELL', ctx);
+  for (const f of ['./', 'index.html', 'styles.css', 'themes.css', 'themes.js', 'app.js', 'fonts/fonts.css', 'logo.svg']) {
+    assert.ok(shell.includes(f), `${f} absent de SHELL`);
+  }
+  const files = [...FONTS_CSS.matchAll(/url\(([^)]+)\)/g)].map((m) => `fonts/${m[1].replace(/['"]/g, '')}`);
+  assert.deepEqual(files.filter((f) => !shell.includes(f)), [], 'polices absentes de SHELL');
+});

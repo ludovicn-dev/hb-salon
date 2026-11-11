@@ -94,7 +94,10 @@ def main():
     base = [f.name for f in sorted(FONTS.glob('*.woff2')) if f.name.split('-')[0] in ('cormorant', 'manrope')]
     listing = ',\n'.join(f"  'fonts/{f}'" for f in base + files)
     sw = SW.read_text(encoding='utf-8').replace('\r\n', '\n')
-    sw = re.sub(r'const FONTS = [\s\S]*?\];\n', f'const FONTS = [\n{listing}\n];\n', sw, count=1)
+    # Seule la liste FONTS (une chaîne 'fonts/…' par ligne) est remplacée : SHELL, juste après, ne bouge pas.
+    sw, n = re.subn(r"const FONTS = \[\n(?:  'fonts/[^'\n]+',?\n)*\];\n", f'const FONTS = [\n{listing}\n];\n', sw, count=1)
+    if n != 1:
+        raise SystemExit("sw.js : liste FONTS introuvable, rien n'est réécrit")
     SW.write_text(sw, encoding='utf-8', newline='\r\n')
 
     allsize = sum(f.stat().st_size for f in FONTS.glob('*.woff2'))

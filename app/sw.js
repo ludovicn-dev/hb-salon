@@ -1,7 +1,7 @@
 // Hors-ligne : l'appli est servie depuis le cache, puis mise à jour en arrière-plan.
 // Changer CACHE à chaque nouvelle version pour forcer la mise à jour sur la tablette.
 
-const CACHE = 'hb-salon-v20';
+const CACHE = 'hb-salon-v21';
 const FONTS = [
   'fonts/cormorant-latin-ext.woff2',
   'fonts/cormorant-latin.woff2',
@@ -47,6 +47,24 @@ const FONTS = [
   'fonts/gilda-display-latin.woff2',
   'fonts/figtree-latin-ext.woff2',
   'fonts/figtree-latin.woff2'
+];
+const SHELL = [
+  './',
+  'index.html',
+  'styles.css',
+  'themes.css',
+  'themes.js',
+  'app.js',
+  'db.js',
+  'sync.js',
+  'manifest.webmanifest',
+  'fonts/fonts.css',
+  'agenda-core.js',
+  'logo.svg',
+  'icons/icon-192.png',
+  'icons/icon-512.png',
+  'icons/icon-maskable-512.png',
+  ...FONTS
 ];
 
 // `cache: 'reload'` : chaque fichier vient du serveur, pas du cache HTTP du navigateur (GitHub Pages
