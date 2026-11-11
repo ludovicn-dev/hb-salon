@@ -12,13 +12,14 @@ Maquettes : https://claude.ai/artifact/4HnJfspaKf4fw7f9TrdCSM
    coche le consentement RGPD, valide. Retour auto à l'accueil après 2 min d'inactivité.
    Revenir à l'espace coiffeur exige le PIN.
 4. **Agenda** (espace coiffeur, bouton « Agenda ») : semaine du lundi au samedi, 8 h 30 – 18 h. Un appui sur un créneau libre
-   ouvre la prise de rendez-vous : téléphone (ou nom) du client, fiche trouvée ou créée avec juste le prénom, prestations,
+   ouvre la prise de rendez-vous : téléphone du client (sa fiche est proposée) et prénom à côté ; un numéro inconnu crée
+   la fiche avec le prénom et le numéro, sans numéro le rendez-vous est noté au prénom seul, sans fiche. Puis prestations,
    durée ajustable par quart d'heure. Un rendez-vous se modifie, se déplace ou s'annule. À l'ouverture de l'espace coiffeur,
    les rendez-vous du jour ; un appui ouvre la fiche avec les prestations prévues cochées.
 
 ## Règles
 - Un seul coiffeur pour l'instant (pas de choix de coiffeur).
-- Une fiche par personne ; prénom et téléphone obligatoires sur la fiche et à la validation du client (une fiche créée depuis l'agenda peut n'avoir que le prénom, le client complète) ; le téléphone peut être partagé (parent/enfant).
+- Une fiche par personne ; prénom et téléphone obligatoires sur la fiche et à la validation du client (une fiche créée depuis l'agenda a le prénom et le téléphone, le client complète) ; le téléphone peut être partagé (parent/enfant).
 - Pas de prix, pas d'avis/étoiles, pas d'envoi de messages en v1.
 - Prestations : Coupe & coiffage, Coloration, Lissage, Soin, Barbe, Massage, Visagiste, Diagnostic.
 - Formule couleur : marque, nuance, oxydant, temps de pose + « reprendre la dernière formule ».

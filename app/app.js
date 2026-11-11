@@ -8,6 +8,7 @@ const CLIENT_IDLE_MS = 2 * 60 * 1000;
 const COIFFEUR_IDLE_MS = 10 * 60 * 1000; // verrouillage automatique de l'espace coiffeur
 const IDLE_WARN_MS = 20000; // avertissement affiché avant le retour à l'accueil
 const THANKS_MS = 10000;
+const VALIDATED_MS = 5000; // ligne « X a validé sa fiche » à l'accueil du coiffeur
 const MAX_PHOTOS = 3;
 const PIN_MAX_TRIES = 5;
 const PIN_LOCKOUT_MS = 30000;
@@ -71,6 +72,7 @@ const S = {
 
 let timer = null;
 let idleTicker = null;
+let validatedTimer = null;
 let lockTicker = null;
 let toastTimer = null;
 let announceTimer = null;
@@ -254,6 +256,9 @@ function applyTheme(id, { save = false } = {}) {
   document.documentElement.dataset.theme = theme;
   const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', bg);
+  // Le service worker en fait la couleur de fond du manifeste (celle qu'Android peint sous l'appli).
+  // Chrome la reprend à sa prochaine vérification de l'appli installée, pas dans l'instant.
+  globalThis.caches?.open('hb-salon-prefs').then((c) => c.put('theme-bg', new Response(bg))).catch(() => {});
   try {
     if (save) {
       localStorage.setItem('hb-theme', theme);
@@ -565,7 +570,7 @@ function prefill(m) {
 const apptServices = (m) => SERVICES.filter((s) => m.services.has(s));
 
 function newApptModal(startIso) {
-  const m = { type: 'appt', start: startIso, duration: 30, durationSet: false, from: null, services: new Set(), query: '', keyboard: 'tel', clientId: null, other: false, firstName: '', prev: [], error: '' };
+  const m = { type: 'appt', start: startIso, duration: 30, durationSet: false, from: null, services: new Set(), query: '', clientId: null, other: false, firstName: '', prev: [], error: '', whoError: '' };
   prefill(m);
   return m;
 }
@@ -625,39 +630,50 @@ let matchTimer = null;
 function announceMatches(m) {
   clearTimeout(matchTimer);
   matchTimer = setTimeout(() => {
-    if (S.modal !== m || !norm(m.query)) return;
-    const list = matchClients(m.query).slice(0, MAX_CHOICES);
+    if (S.modal !== m || digits(m.query).length < 2) return;
+    const list = phoneMatches(m.query).slice(0, MAX_CHOICES);
     announce(
       list.length
         ? `${list.length > 1 ? `${list.length} fiches` : '1 fiche'} : ${list.map(fullName).join(', ')}. Touchez la bonne, ou Autre personne.`
-        : 'Aucune fiche : une nouvelle sera créée avec le prénom.'
+        : 'Aucune fiche à ce numéro : tapez le prénom, une fiche sera créée.'
     );
   }, 800);
 }
 
-// Choix de la personne : fiches trouvées par le téléphone (ou le nom), « Autre personne », prénom.
+// Fiches au numéro tapé (dès 2 chiffres), les plus récentes d'abord ; +687 devant est ignoré.
+const localDigits = (p) => {
+  const d = digits(p);
+  return d.length === 9 && d.startsWith('687') ? d.slice(3) : d;
+};
+function phoneMatches(query) {
+  const qd = localDigits(query);
+  if (qd.length < 2) return [];
+  return S.clients.filter((c) => localDigits(c.phone).includes(qd)).sort(byRecent);
+}
+const phoneComplete = (query) => digits(query).length >= 6 && digits(query).length <= 15;
+
+// Sous le téléphone et le prénom : fiches trouvées au numéro (et « Autre personne »), puis ce qui sera
+// fait (fiche créée avec le numéro, ou rendez-vous au prénom seul, sans fiche), et l'allergie du client choisi.
 function viewApptWho(m) {
-  const matches = matchClients(m.query).slice(0, MAX_CHOICES);
-  const showFirst = m.other || (norm(m.query) && !matches.length);
+  const matches = phoneMatches(m.query).slice(0, MAX_CHOICES);
   const chosen = m.clientId && S.clients.find((c) => c.id === m.clientId);
   const chip = (c) => `<button type="button" class="chip" data-action="appt-who" data-id="${c.id}" role="radio" aria-checked="${c.id === m.clientId}">
       <span>${esc(fullName(c))}</span>${c.phone ? `<small>${esc(fmtPhone(c.phone))}</small>` : ''}</button>`;
-  const first = m.firstName || (hasLetters(m.query) ? capName(m.query.trim()) : '');
+  let hint = '';
+  if (!chosen && (m.other || !matches.length)) {
+    if (!digits(m.query)) hint = 'Sans numéro, le rendez-vous est noté au prénom seul, sans créer de fiche.';
+    else if (phoneComplete(m.query)) hint = 'Une fiche sera créée avec ce prénom et ce numéro ; le client la complétera à sa visite.';
+  }
   return `
     ${
-      norm(m.query)
-        ? `<div class="chips" role="radiogroup" aria-label="Client">
+      matches.length
+        ? `<div class="chips" role="radiogroup" aria-label="Fiches à ce numéro">
             ${matches.map(chip).join('')}
-            <button type="button" class="chip chip-add" data-action="appt-other" role="radio" aria-checked="${Boolean(showFirst)}">${icon('plus', 16)} Autre personne</button>
+            <button type="button" class="chip chip-add" data-action="appt-other" role="radio" aria-checked="${Boolean(m.other)}">${icon('plus', 16)} Autre personne</button>
           </div>`
         : ''
     }
-    ${
-      showFirst
-        ? `<label class="field">Prénom<input name="apptFirst" value="${esc(first)}" autocomplete="off" autocapitalize="words"></label>
-           <p class="muted small">Une fiche sera créée avec ce prénom${digits(m.query).length >= 6 && !hasLetters(m.query) ? ' et ce numéro' : ''} ; le client la complétera à sa visite.</p>`
-        : ''
-    }
+    ${hint ? `<p class="muted small">${hint}</p>` : ''}
     ${chosen?.allergies ? `<div class="allergy allergy-mini">${icon('alert', 18)}<p><strong>Allergies</strong> <span>${esc(chosen.allergies)}</span></p></div>` : ''}`;
 }
 
@@ -687,12 +703,15 @@ function viewApptDialog(m) {
         <button type="button" class="btn btn-ghost btn-sm appt-open" data-action="appt-open">${icon(c ? 'card' : 'plus', 16)} ${c ? 'Ouvrir la fiche' : 'Créer la fiche'}</button>
       </div>
       ${c?.allergies ? `<div class="allergy allergy-mini">${icon('alert', 18)}<p><strong>Allergies</strong> <span>${esc(c.allergies)}</span></p></div>` : ''}`
-    : `<div class="appt-query">
-        <label class="field">Téléphone ou nom
-          <input name="apptQuery" type="text" inputmode="${m.keyboard}" value="${esc(m.query)}" autocomplete="off" data-autofocus>
+    : `<div class="appt-ident">
+        <label class="field">Téléphone
+          <input name="apptQuery" type="tel" inputmode="tel" value="${esc(m.query)}" autocomplete="off" data-autofocus>
         </label>
-        <button type="button" class="btn btn-quiet btn-sm keyboard-btn" data-action="appt-keyboard">${m.keyboard === 'tel' ? 'Clavier lettres' : 'Clavier chiffres'}</button>
+        <label class="field">Prénom
+          <input name="apptFirst" type="text" value="${esc(apptFirstName(m))}" autocomplete="off" autocapitalize="words">
+        </label>
       </div>
+      <p class="err err-inline" id="appt-who-err" role="alert">${esc(m.whoError)}</p>
       <div id="appt-who" class="appt-who">${viewApptWho(m)}</div>`;
   const when = done
     ? `<span class="step-value appt-done-time">${fmtMin(min)} – ${fmtMin(min + m.duration)}</span>`
@@ -727,6 +746,12 @@ function viewApptDialog(m) {
         </div>
       </div>
     </form>`;
+}
+
+// Prénom affiché : celui de la fiche choisie, sinon celui qui a été tapé.
+function apptFirstName(m) {
+  const chosen = m.clientId && S.clients.find((c) => c.id === m.clientId);
+  return chosen ? chosen.firstName : m.firstName;
 }
 
 // Problème d'un horaire : { reason: 'past' | 'overlap' | 'close', text }, ou null s'il convient.
@@ -766,23 +791,38 @@ async function saveAppt(m) {
     }
     announce(msg);
   };
+  // Ce qui manque pour savoir qui vient : écrit juste sous le téléphone et le prénom, là où est le doigt
+  // (en bas de la fenêtre, le message restait caché derrière le clavier).
+  const failWho = (msg, field = null) => {
+    m.whoError = msg;
+    const slot = app.querySelector('#appt-who-err');
+    if (slot) slot.textContent = msg;
+    announce(msg);
+    if (field) app.querySelector(`[name="${field}"]`)?.focus();
+    slot?.scrollIntoView({ block: 'nearest' });
+  };
   let client = a ? apptClient(a) : m.clientId && S.clients.find((c) => c.id === m.clientId);
-  const firstName = (m.firstName || (hasLetters(m.query || '') ? capName(m.query.trim()) : '')).trim();
-  // Des fiches proposées mais aucune touchée : pas de nouvelle fiche par surprise (elle n'aurait pas l'allergie).
-  const matches = !a && !client && !m.other ? matchClients(m.query) : [];
-  if (matches.length) {
-    return fail(
-      matches.length === 1
-        ? `Touchez la fiche de ${fullName(matches[0])}, ou « Autre personne » pour une nouvelle fiche.`
-        : 'Touchez la bonne fiche, ou « Autre personne » pour une nouvelle fiche.'
-    );
-  }
-  const newPerson = !a && !client && (m.other || norm(m.query));
-  if (!a && !client && !(newPerson && firstName)) {
-    if (!newPerson) return fail('Tapez le téléphone ou le prénom du client.');
-    fail('Tapez le prénom du client.'); // le numéro est déjà là : seul le prénom manque
-    app.querySelector('[name="apptFirst"]')?.focus();
-    return;
+  const firstName = capName((m.firstName || '').trim());
+  const phone = m.query?.trim() || '';
+  if (!a && !client) {
+    const matches = m.other ? [] : phoneMatches(phone);
+    if (digits(phone) && !phoneComplete(phone)) {
+      return failWho(matches.length ? 'Numéro incomplet : finissez-le, ou touchez la fiche du client.' : 'Numéro incomplet : vérifiez les chiffres.', 'apptQuery');
+    }
+    if (matches.length) {
+      // Même prénom qu'une fiche à ce numéro : c'est elle. Sinon, pas de nouvelle fiche par surprise
+      // (elle n'aurait pas l'allergie) : on touche la bonne, ou « Autre personne ».
+      const same = matches.filter((c) => firstName && norm(c.firstName) === norm(firstName));
+      if (same.length === 1) client = same[0];
+      else {
+        return failWho(
+          matches.length === 1
+            ? `Touchez la fiche de ${fullName(matches[0])}, ou « Autre personne » pour une nouvelle fiche.`
+            : 'Touchez la bonne fiche, ou « Autre personne » pour une nouvelle fiche.'
+        );
+      }
+    }
+    if (!client && !firstName) return failWho('Tapez le prénom du client.', 'apptFirst');
   }
   const issue = await slotIssue({ id: m.id, start: m.start, duration: m.duration }, !a || m.start !== a.start);
   // Chevauchement et fin après 18 h sont déjà écrits sur la ligne « Fin à … » : elle luit et elle est lue,
@@ -812,16 +852,17 @@ async function saveAppt(m) {
     return;
   }
   if (issue && issue.reason !== 'close') return fail(issue.text);
-  if (newPerson && !client) {
-    const phone = !hasLetters(m.query) && digits(m.query).length >= 6 ? m.query.trim() : '';
+  // Un numéro : la fiche est créée en même temps. Sans numéro, le rendez-vous est noté au prénom seul ;
+  // la fiche se crée plus tard depuis le rendez-vous (« Créer la fiche »).
+  if (!a && !client && phoneComplete(phone)) {
     client = await db.saveClient({ firstName, phone });
     await loadClients();
   }
   const saved = await db.saveAppointment({
     ...(a || {}),
-    clientId: a ? a.clientId : client.id,
-    firstName: client ? client.firstName : a.firstName,
-    phone: client ? client.phone : a.phone,
+    clientId: a ? a.clientId : client?.id || null,
+    firstName: client ? client.firstName : a ? a.firstName : firstName,
+    phone: client ? client.phone : a ? a.phone : '',
     start: m.start,
     duration: m.duration,
     services: apptServices(m)
@@ -1186,10 +1227,10 @@ function viewResults() {
   );
 }
 
-// Après la validation d'un client : qui, et quand, en tête de l'accueil (jusqu'à la fiche suivante).
+// Après la validation d'un client : qui, et quand, en tête de l'accueil, quelques secondes (hideValidated).
 const viewValidated = () =>
   S.validated
-    ? `<p class="done-line">${icon('check', 18)}<span><strong>${esc(S.validated.name)}</strong> a validé sa fiche à ${fmtTime(S.validated.at)}.</span></p>`
+    ? `<p class="done-line validated-line">${icon('check', 18)}<span><strong>${esc(S.validated.name)}</strong> a validé sa fiche à ${fmtTime(S.validated.at)}.</span></p>`
     : '';
 
 // Le planning du jour défile dans sa propre zone (titre, messages et bandeaux restent en vue) ;
@@ -1282,6 +1323,10 @@ const viewNotices = () =>
         <button type="button" class="btn btn-sm btn-ghost" data-action="dismiss-notice" data-index="${i}">Compris</button></div>`;
     })
     .join('');
+
+// Après « Compris » : le bandeau suivant, sinon le titre de l'écran. Jamais la recherche : le clavier
+// d'Android s'ouvrirait sans qu'on l'ait demandé.
+const CALM_FOCUS = '.detail [data-action="dismiss-notice"], .detail h1';
 
 // Un bandeau qui parle d'une visite disparaît dès que la visite est validée ou effacée.
 const dropNotices = (pred) => (S.notices = S.notices.filter((n) => !pred(n)));
@@ -1411,7 +1456,7 @@ function viewDraft() {
         : ''
     }
     <label class="field">Note interne (le client ne la voit pas)
-      <textarea data-bind="note" rows="2" placeholder="ex. Préfère une frange courte">${esc(d.note)}</textarea>
+      <textarea data-bind="note" rows="2" autocomplete="off" placeholder="ex. Préfère une frange courte">${esc(d.note)}</textarea>
     </label>
     <section class="photos">
       <h2 class="label" tabindex="-1">Photos (${d.photos.length}/${MAX_PHOTOS})</h2>
@@ -1512,12 +1557,12 @@ function viewClient() {
           <p class="muted">Votre coiffeur vous confie la tablette : ${help}</p>
         </div>
         <div class="grid2">
-          ${inputField('field field-lg', 'firstName', 'Prénom', 'text', c.firstName, 'autocomplete="given-name" autocapitalize="words" required')}
-          ${inputField('field field-lg', 'lastName', 'Nom (facultatif)', 'text', c.lastName, 'autocomplete="family-name" autocapitalize="words"')}
+          ${inputField('field field-lg', 'firstName', 'Prénom', 'text', c.firstName, 'autocomplete="off" autocapitalize="words" required')}
+          ${inputField('field field-lg', 'lastName', 'Nom (facultatif)', 'text', c.lastName, 'autocomplete="off" autocapitalize="words"')}
         </div>
         <div class="grid-contact">
-          ${inputField('field field-lg', 'phone', 'Téléphone', 'tel', c.phone, 'autocomplete="tel" inputmode="tel" required')}
-          ${inputField('field field-lg', 'email', 'E-mail (facultatif)', 'email', c.email, 'autocomplete="email" inputmode="email"')}
+          ${inputField('field field-lg', 'phone', 'Téléphone', 'tel', c.phone, 'autocomplete="off" inputmode="tel" required')}
+          ${inputField('field field-lg', 'email', 'E-mail (facultatif)', 'email', c.email, 'autocomplete="off" inputmode="email"')}
         </div>
         <label class="consent">
           <input type="checkbox" name="consent" ${c.consent ? 'checked' : ''}>
@@ -1635,7 +1680,7 @@ function viewModal() {
           ${input('email', 'E-mail (facultatif)', 'email', 'inputmode="email" autocomplete="off"')}
         </div>
         <label class="field">Allergies / sensibilités
-          <textarea name="allergies" rows="2" placeholder="ex. Réaction à la PPD, cuir chevelu sensible">${esc(c.allergies)}</textarea>
+          <textarea name="allergies" rows="2" autocomplete="off" placeholder="ex. Réaction à la PPD, cuir chevelu sensible">${esc(c.allergies)}</textarea>
         </label>
         ${c.id ? '' : '<p class="muted small">Le prénom et le téléphone suffisent : le client complètera le reste lui-même.</p>'}
         <div class="dup-slot"></div>
@@ -1726,7 +1771,10 @@ function viewModal() {
   } else if (m.type === 'settings') {
     body = `
       <div class="dialog dialog-settings">
-        <h2 class="serif" id="dlg-title">Réglages</h2>
+        <div class="dlg-head">
+          <h2 class="serif" id="dlg-title">Réglages</h2>
+          <button type="button" class="btn btn-ghost btn-sm" data-action="close-modal">${icon('x', 18)} Fermer</button>
+        </div>
         ${viewThemePicker()}
         <section class="dlg-section" aria-labelledby="sec-pin">
           <h3 id="sec-pin">Code de l’espace coiffeur</h3>
@@ -1734,7 +1782,6 @@ function viewModal() {
           <div><button type="button" class="btn btn-ghost" data-action="change-pin">${icon('key', 18)} Changer le code</button></div>
         </section>
         ${viewExport()}
-        <div class="form-actions"><button type="button" class="btn btn-ghost" data-action="close-modal">Fermer</button></div>
       </div>`;
   } else if (m.type === 'appt') {
     body = viewApptDialog(m);
@@ -1971,7 +2018,21 @@ async function enterCoiffeur() {
     openModal(held);
   }
   // Une ligne à l'accueil referme la boucle (le toast passait inaperçu) ; le lecteur d'écran l'entend.
-  if (S.validated) announce(`${S.validated.name} a validé sa fiche.`);
+  if (S.validated) {
+    announce(`${S.validated.name} a validé sa fiche.`);
+    clearTimeout(validatedTimer);
+    validatedTimer = setTimeout(hideValidated, VALIDATED_MS);
+  }
+}
+
+// La ligne « a validé sa fiche » s'efface d'elle-même après quelques secondes, en fondu, sans redessiner
+// l'écran (le coiffeur peut être en train de taper une recherche).
+function hideValidated() {
+  S.validated = null;
+  const line = app.querySelector('.validated-line');
+  if (!line) return;
+  line.classList.add('leave');
+  setTimeout(() => line.remove(), 200);
 }
 
 // Fin de la modification d'une visite : on retrouve le brouillon du jour.
@@ -2297,25 +2358,27 @@ const actions = {
     const a = findAppt(el.dataset.id);
     if (a) openApptModal(a);
   },
-  'appt-keyboard': () => {
-    S.modal.keyboard = S.modal.keyboard === 'tel' ? 'text' : 'tel';
-    render({ focus: '[name="apptQuery"]' });
-  },
+  // Fiche touchée : son prénom remplit le champ ; touchée à nouveau, elle est oubliée avec lui.
   'appt-who': async (el) => {
     const m = S.modal;
-    m.clientId = m.clientId === el.dataset.id ? null : el.dataset.id;
+    const was = m.clientId;
+    m.clientId = was === el.dataset.id ? null : el.dataset.id;
+    m.firstName = m.clientId ? apptFirstName(m) : was ? '' : m.firstName;
     m.other = false;
     m.prev = m.clientId ? await db.appointmentsOf(m.clientId) : [];
     m.error = '';
+    m.whoError = '';
     prefill(m);
     render();
   },
   'appt-other': () => {
     const m = S.modal;
+    if (m.clientId) m.firstName = ''; // le prénom venait de la fiche touchée
     m.other = !m.other;
     m.clientId = null;
     m.prev = [];
     m.error = '';
+    m.whoError = '';
     prefill(m);
     render({ focus: m.other ? '[name="apptFirst"]' : null });
   },
@@ -2470,7 +2533,7 @@ const actions = {
     S.modalReturn = null;
     const who = hasName(client) ? `de ${fullName(client)}` : `créée le ${fmtDayShort(client.createdAt)}${client.phone ? ` (${fmtPhone(client.phone)})` : ''}`;
     addNotice({ text: `Fiche ${who} supprimée.${keptText(kept)}` });
-    render({ focus: '#search' });
+    render({ focus: CALM_FOCUS });
   },
   'edit-client': () => openModal({ type: 'client', client: { ...S.client, phone: fmtPhone(S.client.phone) } }),
   'close-modal': closeModal,
@@ -2499,7 +2562,7 @@ const actions = {
   },
   'dismiss-notice': (el) => {
     S.notices.splice(Number(el.dataset.index), 1);
-    render({ focus: '#search' });
+    render({ focus: CALM_FOCUS });
   },
   'rehand-notice': async (el) => {
     const notice = S.notices[Number(el.dataset.index)];
@@ -2670,7 +2733,7 @@ app.addEventListener('pointerdown', (e) => {
 // Téléphone mis en forme (98.62.13) en quittant le champ, comme partout ailleurs dans l'appli.
 app.addEventListener('focusout', (e) => {
   const el = e.target;
-  // Numéro tapé dans « Téléphone ou nom » : même mise en forme (la recherche ne regarde que les chiffres).
+  // Téléphone du nouveau rendez-vous : même mise en forme (la recherche ne regarde que les chiffres).
   if (el.name === 'apptQuery' && S.modal?.type === 'appt' && !hasLetters(el.value) && fmtPhone(el.value) !== el.value) {
     el.value = fmtPhone(el.value);
     S.modal.query = el.value;
@@ -2708,12 +2771,17 @@ app.addEventListener('input', (e) => {
   if (el.matches('[data-search]')) {
     S.query = el.value;
     app.querySelector('#results').innerHTML = viewResults();
-  } else if (el.name === 'apptQuery' && S.modal?.type === 'appt') {
+  } else if ((el.name === 'apptQuery' || el.name === 'apptFirst') && S.modal?.type === 'appt') {
     const m = S.modal;
-    m.query = el.value;
+    if (el.name === 'apptQuery') m.query = el.value;
+    else m.firstName = el.value;
     m.error = '';
-    // Une fiche choisie qui ne correspond plus au numéro tapé est oubliée.
-    if (m.clientId && !matchClients(m.query).some((c) => c.id === m.clientId)) {
+    m.whoError = '';
+    // Une fiche choisie qui ne correspond plus au numéro, ou au prénom tapé, est oubliée.
+    const chosen = m.clientId && S.clients.find((c) => c.id === m.clientId);
+    const stale =
+      chosen && (el.name === 'apptQuery' ? !phoneMatches(m.query).some((c) => c.id === m.clientId) : norm(m.firstName) !== norm(chosen.firstName));
+    if (stale) {
       m.clientId = null;
       m.prev = [];
       prefill(m);
@@ -2722,13 +2790,8 @@ app.addEventListener('input', (e) => {
     }
     app.querySelector('#appt-who').innerHTML = viewApptWho(m);
     app.querySelector('#appt-err').textContent = '';
-    announceMatches(m);
-  } else if (el.name === 'apptFirst' && S.modal?.type === 'appt') {
-    S.modal.firstName = el.value;
-    if (S.modal.error) {
-      S.modal.error = '';
-      app.querySelector('#appt-err').textContent = '';
-    }
+    app.querySelector('#appt-who-err').textContent = '';
+    if (el.name === 'apptQuery') announceMatches(m);
   } else if (el.matches('[data-bind]')) {
     const [a, b] = el.dataset.bind.split('.');
     if (b) S.draft[a][b] = el.value;

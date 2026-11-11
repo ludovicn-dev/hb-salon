@@ -83,6 +83,11 @@
 
 * { box-sizing: border-box; }
 
+/* Pas de sélection de texte au toucher, sauf dans les champs : sur Android, Chrome ouvrait sinon
+   « Toucher pour rechercher » (volet Google en bas) sur un libellé ou un texte touché. */
+body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+input, textarea { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+
 html, body {
   margin: 0;
   height: 100%;
@@ -404,6 +409,8 @@ h2.label { font-weight: 400; }
 .done-line strong { color: var(--text); font-weight: 600; }
 .empty .done-line { margin-bottom: 18px; }
 .today-plan .done-line { align-self: flex-start; margin-bottom: 10px; }
+.validated-line { transition: opacity var(--t-fade); }
+.validated-line.leave { opacity: 0; }
 
 /* Le nom partage sa ligne avec « Modifier la fiche » ; coordonnées et repères passent dessous, sur toute
    la largeur (en portrait, ils se repliaient sur deux lignes à côté du bouton). */
@@ -784,6 +791,21 @@ button.photo:active { border-color: var(--accent); }
 .dialog h2 { font-size: var(--fs-xl); }
 .dialog-sm { width: min(480px, 100%); }
 .dialog-settings { width: min(720px, 100%); }
+/* En-tête de fenêtre avec « Fermer » en haut à droite : il reste en vue quand le contenu défile. */
+.dlg-head {
+  position: sticky;
+  top: -28px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: -28px -28px 0;
+  padding: 20px 28px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+.dlg-head h2 { margin: 0; }
 
 /* Réglages : vignettes des thèmes. Le cadre suit le thème en place ; l'aperçu (data-theme) peint le sien. */
 .theme-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
@@ -1051,10 +1073,8 @@ button.photo:active { border-color: var(--accent); }
 .stepper { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .stepper .label { min-width: 70px; }
 .step-value { min-width: 84px; text-align: center; font-size: var(--fs-lg); font-weight: 700; font-variant-numeric: tabular-nums; }
-.appt-query { display: flex; align-items: flex-end; gap: 10px; }
-.appt-query .field { flex: 1; }
-.appt-query .btn { margin-bottom: 4px; white-space: nowrap; }
-.keyboard-btn { min-width: 150px; } /* même largeur pour « Clavier lettres » et « Clavier chiffres » : le champ ne bouge pas */
+/* Nouveau rendez-vous : le téléphone d'abord (il retrouve la fiche), le prénom à côté. */
+.appt-ident { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .appt-who { display: flex; flex-direction: column; gap: 10px; }
 .appt-who:empty { display: none; }
 /* Choix de fiche : de vrais boutons, distincts des étiquettes de prestations de l'historique. */

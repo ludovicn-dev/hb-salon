@@ -1,7 +1,9 @@
 // Hors-ligne : l'appli est servie depuis le cache, puis mise à jour en arrière-plan.
 // Changer CACHE à chaque nouvelle version pour forcer la mise à jour sur la tablette.
 
-const CACHE = 'hb-salon-v21';
+const CACHE = 'hb-salon-v22';
+// Réglages gardés d'une version à l'autre : fond du thème choisi, écrit par l'appli (applyTheme).
+const PREFS = 'hb-salon-prefs';
 const FONTS = [
   'fonts/cormorant-latin-ext.woff2',
   'fonts/cormorant-latin.woff2',
@@ -82,25 +84,43 @@ self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE && k !== PREFS).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
 
+// Depuis le cache, mis à jour en arrière-plan.
+async function fromCache(request) {
+  const cache = await caches.open(CACHE);
+  const cached = await cache.match(request, { ignoreSearch: true });
+  const network = fetch(request)
+    .then((res) => {
+      if (res.ok) cache.put(request, res.clone());
+      return res;
+    })
+    .catch(() => cached);
+  return cached || network;
+}
+
+// Manifeste aux couleurs du thème choisi : Android peint sa couleur de fond sous l'appli (ouverture du
+// clavier, geste qui ferme l'appli). Restée bleu nuit, elle apparaissait sous un thème clair.
+async function themedManifest(request) {
+  const res = await fromCache(request);
+  const bg = await (await caches.open(PREFS)).match('theme-bg');
+  if (!res?.ok || !bg) return res;
+  try {
+    const color = (await bg.text()).trim();
+    const manifest = await res.clone().json();
+    if (/^#[0-9a-f]{3,8}$/i.test(color)) Object.assign(manifest, { background_color: color, theme_color: color });
+    return new Response(JSON.stringify(manifest), { headers: { 'Content-Type': 'application/manifest+json' } });
+  } catch (err) {
+    return res;
+  }
+}
+
 self.addEventListener('fetch', (e) => {
   const { request } = e;
-  if (request.method !== 'GET' || new URL(request.url).origin !== location.origin) return;
-
-  e.respondWith(
-    caches.open(CACHE).then(async (cache) => {
-      const cached = await cache.match(request, { ignoreSearch: true });
-      const network = fetch(request)
-        .then((res) => {
-          if (res.ok) cache.put(request, res.clone());
-          return res;
-        })
-        .catch(() => cached);
-      return cached || network;
-    })
-  );
+  const url = new URL(request.url);
+  if (request.method !== 'GET' || url.origin !== location.origin) return;
+  e.respondWith(url.pathname.endsWith('/manifest.webmanifest') ? themedManifest(request) : fromCache(request));
 });
