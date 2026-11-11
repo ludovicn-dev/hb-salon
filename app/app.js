@@ -197,7 +197,7 @@ function toast(message) {
 }
 
 // Sélecteur stable d'un élément, pour lui rendre le focus après un nouveau rendu.
-const KEY_ATTRS = ['id', 'name', 'data-bind', 'data-action', 'data-tab', 'data-service', 'data-id', 'data-key', 'data-visit', 'data-index', 'data-day', 'data-min'];
+const KEY_ATTRS = ['id', 'name', 'data-bind', 'data-action', 'data-tab', 'data-service', 'data-id', 'data-key', 'data-visit', 'data-index', 'data-start'];
 function selectorOf(el) {
   if (!el || el === document.body || !app.contains(el)) return null;
   const parts = KEY_ATTRS.filter((a) => el.hasAttribute(a)).map((a) => `[${a}="${CSS.escape(el.getAttribute(a))}"]`);
@@ -966,11 +966,10 @@ function reachOf(spans) {
 
 // Les créneaux et les rendez-vous sont écrits dans l'ordre des heures (lecture d'écran) ; le temps
 // écoulé est voilé et n'offre plus de créneau.
-function viewDayColumn(day, i, now) {
+function viewDayColumn(day, appts, now, today = null) {
   const isToday = day.toDateString() === now.toDateString();
-  const appts = S.weekAppts.filter((a) => new Date(a.start).toDateString() === day.toDateString());
   const lanes = core.lanes(appts);
-  const dayName = `${DAY_NAMES[i]} ${fmtDay(day)}`;
+  const dayName = `${DAY_NAMES[(day.getDay() + 6) % 7]} ${fmtDay(day)}`;
   const lines = [];
   for (let m = core.OPEN_MIN + 30; m < core.CLOSE_MIN; m += 30) lines.push(`<i class="hl${m % 60 ? ' half' : ''}" style="top:${pct(m)}"></i>`);
   const nowMin = core.minutesOf(now);
@@ -981,7 +980,7 @@ function viewDayColumn(day, i, now) {
   const reach = reachOf([...free, ...appts.map((a) => ({ start: core.minutesOf(new Date(a.start)), end: core.minutesOf(new Date(a.start)) + shown(a) }))]);
   const items = free.map((f) => ({
     min: f.start,
-    html: `<button type="button" class="slot${f.end - f.start < core.SLOT_MIN ? ' short' : ''}" style="top:${pct(f.start)};height:${span(f.end - f.start)}${reach(f.start, f.end)}" data-action="slot" data-day="${i}" data-min="${f.start}" aria-label="${esc(`${dayName}, ${fmtMin(f.start)}, libre`)}"></button>`
+    html: `<button type="button" class="slot${f.end - f.start < core.SLOT_MIN ? ' short' : ''}" style="top:${pct(f.start)};height:${span(f.end - f.start)}${reach(f.start, f.end)}" data-action="slot" data-start="${atMinutes(day, f.start).toISOString()}" aria-label="${esc(`${dayName}, ${fmtMin(f.start)}, libre`)}"></button>`
   }));
   for (const a of appts) {
     const start = new Date(a.start);
@@ -1045,18 +1044,23 @@ function viewAgendaLine(pastWeek) {
   return `<p class="agenda-line muted">${pastWeek ? 'Semaine passée : consultation seulement.' : 'Touchez un créneau libre pour noter un rendez-vous.'}</p>`;
 }
 
+// Repères d'heures de la colonne de gauche (les demi-heures en plus pour le planning du jour).
+function hourMarks(halves = false) {
+  const out = [];
+  for (let m = core.OPEN_MIN; m <= core.CLOSE_MIN; m += 30) {
+    if (halves || m === core.OPEN_MIN || m % 60 === 0) {
+      const edge = m === core.OPEN_MIN ? ' first' : m === core.CLOSE_MIN ? ' last' : '';
+      out.push(`<span class="hour${edge}${halves && m % 60 && m !== core.OPEN_MIN ? ' half' : ''}" style="top:${pct(m)}">${hourLabel(m)}</span>`);
+    }
+  }
+  return out.join('');
+}
+
 function viewAgenda() {
   const now = new Date();
   const days = core.weekDays(S.week);
   const current = S.week.getTime() === core.defaultWeek(now).getTime();
   const pastWeek = atMinutes(days[5], core.CLOSE_MIN) <= now;
-  const hours = [];
-  for (let m = core.OPEN_MIN; m <= core.CLOSE_MIN; m += 30) {
-    if (m === core.OPEN_MIN || m % 60 === 0) {
-      const edge = m === core.OPEN_MIN ? ' first' : m === core.CLOSE_MIN ? ' last' : '';
-      hours.push(`<span class="hour${edge}" style="top:${pct(m)}">${hourLabel(m)}</span>`);
-    }
-  }
   const extra = S.moving
     ? `<button type="button" class="btn btn-ghost" data-action="move-cancel">${icon('x', 18)} Ne pas déplacer</button>`
     : S.note?.undo
@@ -1087,8 +1091,8 @@ function viewAgenda() {
       ${days.map((d, i) => `<span class="day-head${d.toDateString() === now.toDateString() ? ' is-today' : ''}">${DAY_NAMES[i].slice(0, 3)} <strong>${d.getDate()}</strong></span>`).join('')}
     </div>
     <div class="week-row week-body">
-      <div class="hours" aria-hidden="true">${hours.join('')}</div>
-      ${days.map((d, i) => viewDayColumn(d, i, now)).join('')}
+      <div class="hours" aria-hidden="true">${hourMarks()}</div>
+      ${days.map((d) => viewDayColumn(d, S.weekAppts.filter((a) => new Date(a.start).toDateString() === d.toDateString()), now)).join('')}
     </div>
   </div>`;
 }
@@ -2185,8 +2189,7 @@ const actions = {
     render({ focus: `[data-space="${S.space}"]` });
   },
   slot: (el) => {
-    const day = core.weekDays(S.week)[Number(el.dataset.day)];
-    const start = atMinutes(day, Number(el.dataset.min)).toISOString();
+    const start = el.dataset.start;
     if (S.moving) moveTo(start, selectorOf(el));
     else openModal(newApptModal(start));
   },
