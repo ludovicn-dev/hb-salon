@@ -94,3 +94,27 @@ for (const { id } of THEMES) {
     assert.deepEqual(fails, [], `${id} : contrastes insuffisants`);
   });
 }
+
+// Polices : chaque famille des thèmes est déclarée, et chaque fichier existe et part dans le cache hors ligne.
+const FONTS_CSS = read('../app/fonts/fonts.css');
+const SW = read('../app/sw.js');
+const firstFamily = (stack) => stack.split(',')[0].trim().replace(/^['"]|['"]$/g, '');
+
+test('chaque police des thèmes est déclarée', () => {
+  const declared = new Set([...FONTS_CSS.matchAll(/font-family:\s*['"]?([^;'"]+)['"]?;/g)].map((m) => m[1].trim()));
+  const missing = new Set();
+  for (const { id } of THEMES) {
+    const t = paletteOf(id);
+    for (const name of ['--serif', '--sans']) if (!declared.has(firstFamily(t[name]))) missing.add(firstFamily(t[name]));
+  }
+  assert.deepEqual([...missing], [], 'familles sans @font-face dans fonts.css');
+});
+
+test('chaque fichier de police existe et part en cache', () => {
+  const files = [...FONTS_CSS.matchAll(/url\(([^)]+)\)/g)].map((m) => m[1].replace(/['"]/g, ''));
+  assert.ok(files.length > 0);
+  for (const f of files) {
+    assert.doesNotThrow(() => readFileSync(new URL(`../app/fonts/${f}`, import.meta.url)), `fonts/${f} absent`);
+    assert.ok(SW.includes(`'fonts/${f}'`), `fonts/${f} absent de la liste FONTS de sw.js`);
+  }
+});
