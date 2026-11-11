@@ -8,12 +8,14 @@
 <title>H&amp;B Salon</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png" type="image/png">
+<!-- Thème choisi dans les Réglages, posé avant les styles : pas un instant de l'ancien thème au lancement. -->
+<script>try{var t=localStorage.getItem('hb-theme'),c=localStorage.getItem('hb-theme-bg');if(t)document.documentElement.dataset.theme=t;if(c)document.querySelector('meta[name="theme-color"]').content=c}catch(e){}</script>
 <link rel="stylesheet" href="fonts/fonts.css">
 <link rel="stylesheet" href="styles.css">
 <link rel="stylesheet" href="themes.css">
 </head>
 <body>
-<div id="app"><main class="welcome" aria-busy="true"><img class="logo logo-xl" src="logo.svg" alt="" width="854" height="502"><h1 class="serif ghost">Bienvenue</h1></main></div>
+<div id="app"><main class="welcome" aria-busy="true"><span class="logo logo-xl" aria-hidden="true"></span><h1 class="serif ghost">Bienvenue</h1></main></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <div id="announce" class="sr-only" role="status" aria-live="polite"></div>
 <script type="module" src="app.js"></script>

@@ -1,6 +1,7 @@
 import * as db from './db.js';
 import * as sync from './sync.js';
 import * as core from './agenda-core.js';
+import { THEMES, DEFAULT_THEME } from './themes.js';
 
 const SERVICES = ['Coupe & coiffage', 'Coloration', 'Lissage', 'Soin', 'Barbe', 'Massage', 'Visagiste', 'Diagnostic'];
 const CLIENT_IDLE_MS = 2 * 60 * 1000;
@@ -22,6 +23,7 @@ const app = document.getElementById('app');
 
 const S = {
   view: 'boot',
+  theme: DEFAULT_THEME, // thème choisi dans les Réglages (applyTheme)
   pin: null, // { mode: 'unlock' | 'new' | 'confirm' | 'recover', entry, first, error, hint, recovered, next, cancel }
   pinFails: 0,
   pinLockedUntil: 0,
@@ -239,8 +241,50 @@ const ICONS = {
 const icon = (name, size = 20) =>
   `<svg class="ic" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
 
-// Le vrai logo du salon, redessiné en vectoriel (dégradé doux d'or rose) : net à toutes les tailles.
-const logo = (size = 'sm') => `<img class="logo logo-${size}" src="logo.svg" alt="H&amp;B Salon" width="854" height="502">`;
+// Le vrai logo du salon, redessiné en vectoriel : logo.svg sert de masque, peint par le dégradé du thème.
+const logo = (size = 'sm') => `<span class="logo logo-${size}" role="img" aria-label="H&amp;B Salon"></span>`;
+
+// ---------- Thème ----------
+
+// Pose le thème sur <html> (data-theme) et colore la barre d'Android. Un thème inconnu (retiré depuis) revient
+// à Élégance et sort du stockage. Avec save, le choix est gardé : index.html le reprend au lancement.
+function applyTheme(id, { save = false } = {}) {
+  const known = THEMES.some((t) => t.id === id);
+  const theme = known ? id : DEFAULT_THEME;
+  document.documentElement.dataset.theme = theme;
+  const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', bg);
+  try {
+    if (save) {
+      localStorage.setItem('hb-theme', theme);
+      localStorage.setItem('hb-theme-bg', bg);
+    } else if (!known) {
+      localStorage.removeItem('hb-theme');
+      localStorage.removeItem('hb-theme-bg');
+    }
+  } catch (e) {
+    // Stockage indisponible : le thème vaut pour cette séance seulement.
+  }
+  S.theme = theme;
+  return theme;
+}
+
+// Réglages : une vignette par thème ; son aperçu porte son propre data-theme et se peint avec ses couleurs.
+function viewThemePicker() {
+  const tile = (t) => {
+    const on = t.id === S.theme;
+    return `<button type="button" class="theme-tile" role="radio" aria-checked="${on}" data-action="set-theme" data-id="${t.id}"${on ? ' data-autofocus' : ''}>
+        <span class="theme-prev" data-theme="${t.id}" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="theme-name">${on ? icon('check', 16) : ''}${esc(t.name)}</span>
+      </button>`;
+  };
+  return `
+        <section class="dlg-section dlg-section-first" aria-labelledby="sec-theme">
+          <h3 id="sec-theme">Thème de l’appli</h3>
+          <p class="muted small">Couleurs et ambiance de l’espace coiffeur et de l’écran client. Le changement se voit tout de suite.</p>
+          <div class="theme-grid" role="radiogroup" aria-labelledby="sec-theme">${THEMES.map(tile).join('')}</div>
+        </section>`;
+}
 
 // Champ de formulaire avec emplacement pour son message d'erreur.
 const inputField = (cls, name, label, type, value, extra = '') =>
@@ -1681,12 +1725,13 @@ function viewModal() {
       </div>`;
   } else if (m.type === 'settings') {
     body = `
-      <div class="dialog dialog-sm">
+      <div class="dialog dialog-settings">
         <h2 class="serif" id="dlg-title">Réglages</h2>
-        <section class="dlg-section dlg-section-first" aria-labelledby="sec-pin">
+        ${viewThemePicker()}
+        <section class="dlg-section" aria-labelledby="sec-pin">
           <h3 id="sec-pin">Code de l’espace coiffeur</h3>
           <p class="muted small">Le code à 4 chiffres qui protège les fiches, les formules et l’agenda. L’espace se verrouille seul après 10 minutes sans activité.</p>
-          <div><button type="button" class="btn btn-ghost" data-action="change-pin" data-autofocus>${icon('key', 18)} Changer le code</button></div>
+          <div><button type="button" class="btn btn-ghost" data-action="change-pin">${icon('key', 18)} Changer le code</button></div>
         </section>
         ${viewExport()}
         <div class="form-actions"><button type="button" class="btn btn-ghost" data-action="close-modal">Fermer</button></div>
@@ -2192,6 +2237,12 @@ const actions = {
   },
   backup: () => openModal({ type: 'backup' }),
   settings: () => openModal({ type: 'settings' }),
+  // La fenêtre reste ouverte : on peut en essayer plusieurs de suite.
+  'set-theme': (el) => {
+    const id = applyTheme(el.dataset.id, { save: true });
+    render({ focus: `.theme-tile[data-id="${id}"]` });
+    announce(`Thème ${THEMES.find((t) => t.id === id).name} appliqué`);
+  },
   'sync-now': () => {
     if (navigator.onLine) sync.syncNow();
     else toast('Pas de réseau pour l’instant : l’envoi partira tout seul au retour du réseau.');
@@ -2975,6 +3026,7 @@ function tickClock() {
 // ---------- Démarrage ----------
 
 (async function boot() {
+  applyTheme(document.documentElement.dataset.theme);
   if (navigator.storage?.persist) navigator.storage.persist();
   const today = new Date();
   await db.purgeLocalOnly(new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString());
