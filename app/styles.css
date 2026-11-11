@@ -1015,7 +1015,7 @@ button.photo:active { border-color: var(--accent); }
 
 /* Planning du jour (accueil de l'espace coiffeur) : la journée en une colonne large, qui défile. */
 .today-plan { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding-bottom: 16px; }
-.day-scroll { flex: 1; min-height: 240px; overflow-y: auto; overscroll-behavior: contain; border-radius: 6px; }
+.day-scroll { flex: 1; min-height: 160px; overflow-y: auto; overscroll-behavior: contain; border-radius: 6px; }
 .today-plan .agenda-head h1 { font-size: 40px; }
 .today-plan .agenda-title > .muted { margin: 2px 0 0; }
 .today-plan .next-appt { align-self: flex-start; }
