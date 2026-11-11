@@ -1013,7 +1013,7 @@ function viewDayColumn(day, appts, now, today = null) {
       items.push({
         min: startMin,
         html: `<button type="button" class="${cls}" style="${style}" data-action="today-appt" data-id="${a.id}" aria-label="${esc(label)}">
-        <span class="today-line"><span class="appt-time">${hourLabel(startMin)}</span><span class="appt-n">${esc(apptName(a, true))}</span>${svc && !tall ? `<span class="appt-svc">${esc(svc)}</span>` : ''}<span class="today-tags">${allergy ? `<span class="today-allergy">${icon('alert', 16)} Allergie</span>` : ''}${visitTag(v, done, live)}</span></span>
+        <span class="today-line"><span class="appt-time">${hourLabel(startMin)}</span><span class="appt-n">${esc(apptName(a, true))}</span>${svc && !tall ? `<span class="appt-svc">${esc(svc)}</span>` : ''}<span class="today-tags">${allergy ? `<span class="today-allergy">${icon('alert', 16)}<span class="tag-label">Allergie</span></span>` : ''}${visitTag(v, done, live)}</span></span>
         ${tall ? `<span class="appt-sub">${esc(info)}</span>` : ''}
       </button>`
       });
@@ -1184,10 +1184,10 @@ const visitOf = (a) => (a.clientId ? S.todayVisits.get(a.clientId) : null);
 
 // État de la visite sur un rendez-vous du jour : à valider, validée, oubliée, ou en cours.
 function visitTag(v, done, live) {
-  if (v?.status === 'pending') return `<span class="tag tag-pending">${icon('clock', 13)} À valider</span>`;
-  if (v) return `<span class="today-state">${icon('check', 16)} Validée${v.validatedAt ? ` à ${fmtTime(v.validatedAt)}` : ''}</span>`;
-  if (done) return '<span class="today-state is-none">Pas de visite notée</span>';
-  return live ? `<span class="today-live">${icon('clock', 16)} En cours</span>` : '';
+  if (v?.status === 'pending') return `<span class="tag tag-pending">${icon('clock', 13)}<span class="tag-label">À valider</span></span>`;
+  if (v) return `<span class="today-state">${icon('check', 16)}<span class="tag-label">Validée${v.validatedAt ? ` à ${fmtTime(v.validatedAt)}` : ''}</span></span>`;
+  if (done) return '<span class="today-state is-none"><span class="tag-label">Pas de visite notée</span></span>';
+  return live ? `<span class="today-live">${icon('clock', 16)}<span class="tag-label">En cours</span></span>` : '';
 }
 const visitWords = (a, v, done, next) =>
   v?.status === 'pending' ? 'visite à valider' : v ? 'visite validée' : done ? 'pas de visite notée' : a.id === next ? 'prochain rendez-vous' : '';
@@ -2199,13 +2199,15 @@ const actions = {
     render();
     toast('Sauvegarde en ligne arrêtée sur cette tablette');
   },
-  // « Aujourd'hui » ramène toujours au planning : la fiche ouverte se referme, sa visite en cours est
-  // mise de côté. Un déplacement commencé dans l'agenda est abandonné.
+  // Depuis l'agenda, « Aujourd'hui » retrouve l'écran laissé (la fiche ouverte, s'il y en avait une) ;
+  // sur « Aujourd'hui », il ramène au planning : la fiche se referme, sa visite en cours est mise de côté.
+  // Un déplacement commencé dans l'agenda est abandonné.
   space: async (el) => {
+    const was = S.space;
     S.space = el.dataset.space;
     S.moving = null;
     if (S.space === 'agenda') await loadWeek();
-    else {
+    else if (was === 'today') {
       parkDraft();
       Object.assign(S, { clientId: null, client: null, query: '' });
     }
