@@ -1121,7 +1121,7 @@ button.photo:active { border-color: var(--accent); }
   .plan-count::first-letter { text-transform: none; }
 }
 .today-plan .next-appt { align-self: flex-start; }
-.day-plan { flex-shrink: 0; display: grid; grid-template-columns: 48px minmax(0, 1fr); column-gap: 6px; height: calc(var(--half-h) * 19); padding-block: 8px; box-sizing: content-box; }
+.day-plan { flex-shrink: 0; display: grid; grid-template-columns: 56px minmax(0, 1fr); column-gap: 6px; height: calc(var(--half-h) * 19); padding-block: 8px; box-sizing: content-box; }
 .hour.half { font-size: var(--fs-xs); opacity: 0.8; }
 .today-block { gap: 2px; padding: 6px 12px; font-size: var(--fs-md); }
 .today-block .appt-sub { font-size: var(--fs-sm); } /* le détail sous le nom, un cran plus bas : il tient en portrait */
