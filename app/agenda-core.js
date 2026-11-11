@@ -40,6 +40,13 @@ export function defaultWeek(now) {
   return turned ? addDays(monday, 7) : monday;
 }
 
+// Le salon ouvre du lundi au samedi.
+export const isOpenDay = (date) => date.getDay() !== 0;
+
+// Haut du planning du jour à l'ouverture : une demi-heure avant maintenant, sans sortir de la
+// journée ; en fin d'après-midi, la dernière heure reste visible.
+export const planStartMin = (now) => Math.min(Math.max(minutesOf(now) - SLOT_MIN, OPEN_MIN), CLOSE_MIN - 60);
+
 export const weekDays = (monday) => Array.from({ length: 6 }, (_, i) => addDays(monday, i));
 
 export function weekLabel(monday) {

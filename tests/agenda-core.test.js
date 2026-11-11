@@ -8,6 +8,8 @@ import {
   minutesOf,
   weekStart,
   defaultWeek,
+  isOpenDay,
+  planStartMin,
   weekDays,
   weekLabel,
   slotAt,
@@ -187,4 +189,18 @@ test('fmtDuration', () => {
   assert.equal(fmtDuration(45), '45 min');
   assert.equal(fmtDuration(120), '2 h');
   assert.equal(fmtDuration(150), '2 h 30');
+});
+
+test('isOpenDay : fermé le dimanche seulement', () => {
+  assert.equal(isOpenDay(d(15)), false); // dimanche 15 novembre 2026
+  assert.equal(isOpenDay(d(16)), true); // lundi
+  assert.equal(isOpenDay(d(14)), true); // samedi
+});
+
+test('planStartMin : calé une demi-heure avant maintenant, borné à la journée', () => {
+  assert.equal(planStartMin(d(11, 7, 0)), OPEN_MIN);
+  assert.equal(planStartMin(d(11, 8, 50)), OPEN_MIN);
+  assert.equal(planStartMin(d(11, 11, 10)), 10 * 60 + 40);
+  assert.equal(planStartMin(d(11, 17, 40)), CLOSE_MIN - 60);
+  assert.equal(planStartMin(d(11, 20, 0)), CLOSE_MIN - 60);
 });
