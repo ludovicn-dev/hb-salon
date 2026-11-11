@@ -401,3 +401,8 @@
 
 /* Éditorial : « Bienvenue » en italique, comme une couverture de magazine. */
 [data-theme="editorial"] .welcome > h1 { font-style: italic; }
+
+/* Barbier et Barbier jour : Work Sans est large, la date de la barre du haut passe en 16 px pour tenir
+   entre « Agenda » et « Sauvegarde » en 1280 px (en portrait, elle est déjà cachée). */
+[data-theme="barbier"] .today,
+[data-theme="barbierjour"] .today { font-size: var(--fs-md); }
