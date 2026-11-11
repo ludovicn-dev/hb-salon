@@ -1123,7 +1123,41 @@ button.photo:active { border-color: var(--accent); }
 .today-plan .next-appt { align-self: flex-start; }
 .day-plan { flex-shrink: 0; display: grid; grid-template-columns: 56px minmax(0, 1fr); column-gap: 6px; height: calc(var(--half-h) * 19); padding-block: 8px; box-sizing: content-box; }
 .hour.half { font-size: var(--fs-xs); opacity: 0.8; }
-.today-block { gap: 2px; padding: 6px 12px; font-size: var(--fs-md); }
+.today-block { gap: 2px; padding: 6px var(--edit-space) 6px 12px; font-size: var(--fs-md); }
+/* Bouton « Rendez-vous » posé au bout de chaque bloc du jour (frère du bloc, pas dedans) : toute la hauteur
+   du bloc se touche, la pastille se voit ; le bloc lui laisse sa place à droite (--edit-space). */
+.day-col { --edit-space: 150px; }
+.today-block.edit-narrow { --edit-space: 64px; }
+.today-edit {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  align-items: flex-start; /* sur la ligne du nom, même quand le bloc est haut */
+  padding: 4px 8px 0;
+  border: none;
+  background: none;
+  color: var(--text);
+}
+.today-edit-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  background: var(--panel);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.today-edit-pill .ic { color: var(--accent); }
+.today-edit:active .today-edit-pill { background: var(--panel-2); }
+.today-edit.is-narrow .today-edit-label { display: none; }
+.today-edit.is-narrow .today-edit-pill { padding: 0 10px; }
+/* Bloc d'un quart d'heure : la pastille tient dans sa hauteur. */
+.today-edit.is-short { align-items: center; padding-top: 0; }
+.today-edit.is-short .today-edit-pill { height: 26px; }
 .today-block .appt-sub { font-size: var(--fs-sm); } /* le détail sous le nom, un cran plus bas : il tient en portrait */
 .today-block.next { box-shadow: inset 0 0 0 1.5px var(--accent); }
 .today-block.short { padding-block: 0; }

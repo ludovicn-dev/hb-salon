@@ -1073,12 +1073,17 @@ function viewDayColumn(day, appts, now, today = null) {
       // (prestations, durée, fin) dessous dès que le bloc a la hauteur de deux lignes.
       const tall = vis >= core.SLOT_MIN;
       const info = [a.services.join(', '), `${core.fmtDuration(a.duration)}, jusqu’à ${fmtTime(end.toISOString())}`].filter(Boolean).join(SEP);
+      // Au bout du bloc, « Rendez-vous » ouvre la fenêtre de l'agenda (annuler, déplacer, changer) ;
+      // le reste du bloc ouvre la fiche. Côte à côte, il ne garde que son icône.
+      const narrow = n > 1;
+      const editStyle = `top:${pct(startMin)};height:${span(vis)};right:calc(${((n - lane - 1) / n) * 100}% + 2px)`;
+      const edit = `<button type="button" class="today-edit${narrow ? ' is-narrow' : ''}${vis < core.SLOT_MIN ? ' is-short' : ''}" style="${editStyle}" data-action="today-edit" data-id="${a.id}" aria-label="${esc(`Rendez-vous de ${apptName(a, true)} à ${fmtTime(a.start)} : modifier ou annuler`)}"><span class="today-edit-pill">${icon('calendar', 16)}<span class="today-edit-label">Rendez-vous</span></span></button>`;
       items.push({
         min: startMin,
-        html: `<button type="button" class="${cls}" style="${style}" data-action="today-appt" data-id="${a.id}" aria-label="${esc(label)}">
+        html: `<button type="button" class="${cls}${narrow ? ' edit-narrow' : ''}" style="${style}" data-action="today-appt" data-id="${a.id}" aria-label="${esc(label)}">
         <span class="today-line"><span class="appt-time">${hourLabel(startMin)}</span><span class="appt-n">${esc(apptName(a, true))}</span>${svc && !tall ? `<span class="appt-svc">${esc(svc)}</span>` : ''}<span class="today-tags">${allergy ? `<span class="today-allergy">${icon('alert', 16)}<span class="tag-label">Allergie</span></span>` : ''}${visitTag(v, done, live)}</span></span>
         ${tall ? `<span class="appt-sub">${esc(info)}</span>` : ''}
-      </button>`
+      </button>${edit}`
       });
       continue;
     }
@@ -2441,6 +2446,10 @@ const actions = {
   },
   'appt-open': () => openApptClient(findAppt(S.modal.id)),
   'today-appt': (el) => openApptClient(findAppt(el.dataset.id)),
+  'today-edit': (el) => {
+    const a = findAppt(el.dataset.id);
+    if (a) openApptModal(a);
+  },
   // Pas de fenêtre de confirmation : l'annulation se défait d'un appui (« Rétablir » sous le titre).
   'appt-cancel': async () => {
     const a = findAppt(S.modal.id);
