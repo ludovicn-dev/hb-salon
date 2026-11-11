@@ -30,13 +30,6 @@
   --fs-xl: 32px; /* titres de fenêtre et d'agenda */
   --fs-2xl: 40px; /* titres d'écran */
   --fs-3xl: 56px; /* Bienvenue */
-  /* Rayons : les éléments imbriqués prennent le cran du dessous (barre Aujourd’hui / Agenda : 16 puis 12). */
-  --r-xs: 6px; /* agenda */
-  --r-sm: 10px; /* petits boutons, champs */
-  --r-md: 12px; /* boutons, cartes de liste, bandeaux */
-  --r-lg: 16px; /* cartes, grands boutons, touches */
-  --r-xl: 20px; /* fenêtres */
-  --r-pill: 99px;
   --logo-1: #f2d4c2; /* dégradé du logo, de haut en bas */
   --logo-2: #d9a386;
   /* Une lumière douce derrière le logo : l'écran que le client voit en premier n'est plus un aplat. */
@@ -44,8 +37,16 @@
   color-scheme: dark;
 }
 
-/* Valeurs dérivées, recalculées sur chaque élément qui porte un thème. */
+/* Valeurs dérivées, recalculées sur chaque élément qui porte un thème. Les rayons d'Élégance y valent
+   par défaut : un thème qui ne les redonne pas les garde aussi dans sa vignette des Réglages. */
 :root, [data-theme] {
+  /* Rayons : les éléments imbriqués prennent le cran du dessous (barre Aujourd’hui / Agenda : 16 puis 12). */
+  --r-xs: 6px; /* agenda */
+  --r-sm: 10px; /* petits boutons, champs */
+  --r-md: 12px; /* boutons, cartes de liste, bandeaux */
+  --r-lg: 16px; /* cartes, grands boutons, touches */
+  --r-xl: 20px; /* fenêtres */
+  --r-pill: 99px;
   --scrim-soft: color-mix(in srgb, var(--bg) 85%, transparent);
   --halo: color-mix(in srgb, var(--panel-2) 60%, var(--bg)); /* lumière douce derrière le logo */
   --glow: color-mix(in srgb, var(--panel) 70%, var(--bg)); /* haut de la colonne du logo, écran client */

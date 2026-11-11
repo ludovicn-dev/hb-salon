@@ -131,3 +131,37 @@ test('le service worker met en cache l’appli, les thèmes et les polices', asy
   const files = [...FONTS_CSS.matchAll(/url\(([^)]+)\)/g)].map((m) => `fonts/${m[1].replace(/['"]/g, '')}`);
   assert.deepEqual(files.filter((f) => !shell.includes(f)), [], 'polices absentes de SHELL');
 });
+
+// Relecture finale : un thème déclare aussi son ton (color-scheme), le bouton enfoncé reste lisible,
+// chaque fichier de l'installation hors ligne existe, et les polices redistribuées ont leur licence.
+test('chaque bloc de thème déclare son ton clair ou sombre', () => {
+  for (const { id } of THEMES) {
+    const css = sourceOf(id).replace(/\r/g, '');
+    const esc = selectorOf(id).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const block = css.match(new RegExp(`(?:^|[}\\n])\\s*${esc}\\s*\\{([^}]*)\\}`))?.[1] || '';
+    assert.match(block, /color-scheme:\s*(light|dark);/, `${id} : color-scheme absent`);
+  }
+});
+
+test('le texte du bouton principal enfoncé reste lisible', () => {
+  for (const { id } of THEMES) {
+    const t = paletteOf(id);
+    assert.ok(ratio(t['--on-accent'], t['--accent-fill-hi']) >= 4.5, `${id} : --on-accent sur --accent-fill-hi ${ratio(t['--on-accent'], t['--accent-fill-hi']).toFixed(2)}`);
+  }
+});
+
+test('chaque fichier de l’installation hors ligne existe', async () => {
+  const vm = await import('node:vm');
+  const ctx = vm.createContext({ self: { addEventListener() {} } });
+  vm.runInContext(readFileSync(new URL('../app/sw.js', import.meta.url), 'utf8'), ctx);
+  for (const f of vm.runInContext('SHELL', ctx).filter((x) => x !== './')) {
+    assert.doesNotThrow(() => readFileSync(new URL(`../app/${f}`, import.meta.url)), `${f} absent du disque`);
+  }
+});
+
+test('les polices redistribuées ont leur licence', () => {
+  const lic = readFileSync(new URL('../app/fonts/LICENCES.txt', import.meta.url), 'utf8');
+  const families = new Set([...FONTS_CSS.matchAll(/font-family:\s*['"]?([^;'"]+)['"]?;/g)].map((m) => m[1].trim()));
+  for (const f of families) assert.ok(lic.includes(`== ${f} ==`), `${f} : licence absente`);
+  assert.match(lic, /SIL OPEN FONT LICENSE/);
+});
