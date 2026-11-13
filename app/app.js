@@ -59,6 +59,7 @@ const S = {
   space: 'today', // espace coiffeur : 'today' | 'agenda' (gardé au verrouillage)
   week: null, // lundi de la semaine affichée dans l'agenda
   weekAppts: [], // rendez-vous de cette semaine
+  weekSlide: null, // 'next' | 'prev' : sens du glissement au prochain rendu (changement de semaine), joué une fois
   moving: null, // { id, name, error } : rendez-vous à déplacer, en attente du nouveau créneau
   note: null, // { text, undo? } : dernier message de l'agenda, effacé à l'action suivante
   flash: null, // id du rendez-vous qui vient d'être noté ou déplacé (il luit un instant)
@@ -423,6 +424,11 @@ function render({ top = false, focus = null } = {}) {
   // Fondu d'arrivée seulement à l'ouverture d'une fenêtre, pas quand on la redessine (erreur, état de la sauvegarde…).
   if (S.modal && S.modal.type !== app.dataset.modal) app.querySelector(':scope > .overlay')?.classList.add('enter');
   app.dataset.modal = S.modal?.type || '';
+  // Nouvelle semaine : elle glisse du côté où l'on va, une seule fois (pas à chaque rendu suivant).
+  if (S.weekSlide) {
+    app.querySelector('.week')?.classList.add(`slide-${S.weekSlide}`);
+    S.weekSlide = null;
+  }
   // Bienvenue / Merci : apparition lente à l'arrivée seulement, pas quand l'écran est redessiné (sauvegarde…).
   if (!same) app.querySelector(':scope > .welcome')?.classList.add('enter', ...(fromBoot ? ['boot'] : []));
   if (S.refused) app.querySelector(S.refused)?.classList.add('refuse');
@@ -2092,6 +2098,7 @@ function precheck(clientId) {
 }
 
 async function showWeek(monday, focus = null) {
+  S.weekSlide = monday > S.week ? 'next' : monday < S.week ? 'prev' : null;
   S.week = monday;
   await loadWeek();
   render({ focus });
@@ -2901,6 +2908,8 @@ const actions = {
 
 const KEEP_NOTE = new Set(['undo', 'space', 'week-prev', 'week-next', 'week-now', 'slot', 'appt', 'close-modal']);
 app.addEventListener('click', (e) => {
+  // Le doigt qui vient de balayer la semaine se lève sur un créneau : ce n'est pas un appui.
+  if (Date.now() - swipedAt < 400) return;
   const el = e.target.closest('[data-action]');
   if (!el || el.disabled) return;
   // Un choix touché prend le focus : le champ de saisie le perd et le clavier Android se referme.
@@ -2922,6 +2931,27 @@ function bindCheckout(el) {
 // Toucher « Je continue » ne doit pas retirer le focus du champ en cours (le clavier Android resterait fermé).
 app.addEventListener('pointerdown', (e) => {
   if (e.target.closest('.idle-warn')) e.preventDefault();
+});
+
+// Balayage de la semaine de l'agenda : vers la gauche la suivante, vers la droite la précédente, au lever
+// du doigt. Un défilement vertical est pris par le navigateur (touch-action: pan-y), qui envoie pointercancel.
+let swipe = null;
+let swipedAt = 0;
+app.addEventListener('pointerdown', (e) => {
+  swipe = S.view === 'coiffeur' && S.space === 'agenda' && !S.modal && e.target.closest('.week') ? { x: e.clientX, y: e.clientY, id: e.pointerId } : null;
+});
+app.addEventListener('pointercancel', () => {
+  swipe = null;
+});
+app.addEventListener('pointerup', (e) => {
+  if (!swipe || e.pointerId !== swipe.id) return;
+  const step = core.swipeStep(e.clientX - swipe.x, e.clientY - swipe.y);
+  swipe = null;
+  if (!step || S.modal) return;
+  swipedAt = Date.now();
+  // Même règle que les flèches : une simple confirmation s'efface, « Rétablir » reste proposé.
+  if (S.note && !S.note.undo) S.note = null;
+  showWeek(addDays(S.week, 7 * step));
 });
 
 // Téléphone mis en forme (98.62.13) en quittant le champ, comme partout ailleurs dans l'appli.

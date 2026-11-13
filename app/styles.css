@@ -68,6 +68,7 @@
   --t-flash: 1800ms; /* rendez-vous qui vient d'être noté ou déplacé */
   --t-arrive: 900ms; /* apparition lente de Bienvenue et Merci */
   --t-screen: 500ms; /* arrivée de l'écran client */
+  --t-week: 260ms; /* glissement d'une semaine à l'autre */
   --t-toast: 300ms; /* montée d'un toast */
   --t-fade: 200ms; /* simple fondu (toast, mouvement réduit) */
   --safe-bottom: env(safe-area-inset-bottom, 0px); /* barre de gestes Android, le cas échéant */
@@ -975,7 +976,7 @@ button.photo:active { border-color: var(--accent); }
 /* Trait d'or droit sous le mot, comme sous les onglets (une ombre interne suivait l'arrondi du bouton). */
 .space-btn[aria-pressed='true']::after { content: ''; position: absolute; inset: auto var(--space-pad) 6px; height: 2px; border-radius: 1px; background: var(--accent); }
 
-.agenda { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; padding: 16px 24px 20px; overflow-y: auto; }
+.agenda { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; padding: 16px 24px 20px; overflow-x: hidden; overflow-y: auto; }
 .agenda-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 /* La largeur du titre ne dépend pas du message : un nom long ne fait plus passer la navigation à la ligne. */
 .agenda-title { flex: 1 1 280px; min-width: 0; }
@@ -993,7 +994,16 @@ button.photo:active { border-color: var(--accent); }
 .week-here { display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; color: var(--accent); font-weight: 600; white-space: nowrap; }
 .btn-icon { width: 48px; padding: 0; }
 
-.week { flex: 1; min-height: 240px; display: flex; flex-direction: column; gap: 6px; }
+.week { flex: 1; min-height: 240px; display: flex; flex-direction: column; gap: 6px; touch-action: pan-y; }
+/* Changement de semaine (balayage ou flèches) : la nouvelle arrive du côté où l'on va. Le défilement vertical
+   reste au navigateur (pan-y), le geste horizontal est à nous (swipeStep). */
+.week.slide-next { animation: week-in-next var(--t-week) var(--ease-out); }
+.week.slide-prev { animation: week-in-prev var(--t-week) var(--ease-out); }
+@keyframes week-in-next { from { opacity: 0; transform: translateX(32px); } }
+@keyframes week-in-prev { from { opacity: 0; transform: translateX(-32px); } }
+@media (prefers-reduced-motion: reduce) {
+  .week.slide-next, .week.slide-prev { animation: none; }
+}
 /* La semaine défile dans sa zone (jours et navigation restent en vue) dès qu'une demi-heure tomberait sous
    --week-half ; en portrait, elle tient sans défiler. */
 .week-scroll { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; }
