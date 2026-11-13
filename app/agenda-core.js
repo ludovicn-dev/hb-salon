@@ -40,6 +40,14 @@ export function defaultWeek(now) {
   return turned ? addDays(monday, 7) : monday;
 }
 
+// Balayage horizontal sur la semaine : vers la gauche = semaine suivante (1), vers la droite = précédente (-1).
+// Un geste trop court ou pas nettement horizontal (défilement des heures en biais) ne change rien (0).
+export const SWIPE_MIN = 60;
+export function swipeStep(dx, dy) {
+  if (Math.abs(dx) < SWIPE_MIN || Math.abs(dx) < 1.5 * Math.abs(dy)) return 0;
+  return dx < 0 ? 1 : -1;
+}
+
 // Le salon ouvre du lundi au samedi.
 export const isOpenDay = (date) => date.getDay() !== 0;
 

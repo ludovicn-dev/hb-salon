@@ -23,7 +23,9 @@ import {
   lanes,
   lastColor,
   agoText,
-  fmtDuration
+  fmtDuration,
+  swipeStep,
+  SWIPE_MIN
 } from '../app/agenda-core.js';
 
 const d = (day, h = 0, m = 0, month = 10, year = 2026) => new Date(year, month, day, h, m);
@@ -246,4 +248,18 @@ test('planStartMin : un rendez-vous coupé par le haut se montre depuis son déb
   assert.equal(planStartMin(d(11, 10, 30), day), 10 * 60);
   // Rendez-vous commencé plus d'une heure avant le calage : le remonter cacherait « maintenant ».
   assert.equal(planStartMin(d(11, 14, 0), [appt('c', iso(11, 11, 0), 240)]), 13 * 60 + 30);
+});
+
+test('swipeStep : vers la gauche = semaine suivante, vers la droite = précédente', () => {
+  assert.equal(swipeStep(-80, 5), 1);
+  assert.equal(swipeStep(80, -5), -1);
+  assert.equal(swipeStep(-SWIPE_MIN, 0), 1);
+});
+
+test('swipeStep : trop court ou pas assez horizontal = rien', () => {
+  assert.equal(swipeStep(-59, 0), 0);
+  assert.equal(swipeStep(0, 0), 0);
+  assert.equal(swipeStep(-70, 60), 0); // défilement en biais
+  assert.equal(swipeStep(30, 200), 0); // défilement vertical
+  assert.equal(swipeStep(-90, 60), 1); // 90 ≥ 1,5 × 60
 });
