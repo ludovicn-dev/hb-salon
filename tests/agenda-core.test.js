@@ -185,6 +185,17 @@ test('agoText : jours sous 2 semaines, semaines sous 3 mois, puis mois et année
   assert.equal(agoText(800), 'il y a 2 ans');
 });
 
+// Forme courte de la liste des clients : mêmes arrondis que la fiche (25 jours = 3 semaines partout).
+test('agoText court : mêmes nombres que la forme longue', () => {
+  assert.equal(agoText(1, true), 'hier');
+  assert.equal(agoText(5, true), 'il y a 5 j');
+  assert.equal(agoText(25, true), 'il y a 3 sem.');
+  assert.equal(agoText(25), 'il y a 3 semaines');
+  assert.equal(agoText(90, true), 'il y a 12 sem.');
+  assert.equal(agoText(200, true), 'il y a 7 mois');
+  assert.equal(agoText(800, true), 'il y a 2 ans');
+});
+
 test('fmtDuration', () => {
   assert.equal(fmtDuration(15), '15 min');
   assert.equal(fmtDuration(45), '45 min');

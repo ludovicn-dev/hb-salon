@@ -182,10 +182,12 @@ export function lastColor(visits, now) {
 }
 
 // En semaines tant que ça compte pour une couleur (repousse), puis en mois et en années.
-export function agoText(days) {
+// `short` : forme de la liste des clients (« hier », « il y a 3 j », « il y a 4 sem. »), mêmes arrondis.
+export function agoText(days, short = false) {
   if (days <= 0) return 'aujourd’hui';
-  if (days < 14) return `il y a ${days} jour${days > 1 ? 's' : ''}`;
-  if (days < 91) return `il y a ${Math.floor(days / 7)} semaines`;
+  if (short && days === 1) return 'hier';
+  if (days < 14) return short ? `il y a ${days} j` : `il y a ${days} jour${days > 1 ? 's' : ''}`;
+  if (days < 91) return `il y a ${Math.floor(days / 7)} ${short ? 'sem.' : 'semaines'}`;
   if (days < 365) return `il y a ${Math.round(days / 30.44)} mois`;
   const years = Math.floor(days / 365);
   return `il y a ${years} an${years > 1 ? 's' : ''}`;

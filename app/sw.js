@@ -1,7 +1,7 @@
-// Hors-ligne : l'appli est servie depuis le cache, puis mise à jour en arrière-plan.
-// Changer CACHE à chaque nouvelle version pour forcer la mise à jour sur la tablette.
+// Hors-ligne : l'appli est servie depuis le cache de sa version, installé d'un bloc.
+// Changer CACHE à chaque nouvelle version : c'est la seule façon dont la tablette se met à jour.
 
-const CACHE = 'hb-salon-v28';
+const CACHE = 'hb-salon-v29';
 // Réglages gardés d'une version à l'autre : fond du thème choisi, écrit par l'appli (applyTheme).
 const PREFS = 'hb-salon-prefs';
 const FONTS = [
@@ -89,17 +89,12 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-// Depuis le cache, mis à jour en arrière-plan.
+// Depuis le cache, jamais réécrit fichier par fichier : une mise à jour en arrière-plan mêlait deux
+// versions (nouvel app.js, ancien db.js) si le réseau coupait avant l'installation de la suivante.
+// Le réseau ne sert que pour ce qui n'est pas dans SHELL.
 async function fromCache(request) {
-  const cache = await caches.open(CACHE);
-  const cached = await cache.match(request, { ignoreSearch: true });
-  const network = fetch(request)
-    .then((res) => {
-      if (res.ok) cache.put(request, res.clone());
-      return res;
-    })
-    .catch(() => cached);
-  return cached || network;
+  const cached = await (await caches.open(CACHE)).match(request, { ignoreSearch: true });
+  return cached || fetch(request);
 }
 
 // Manifeste aux couleurs du thème choisi : Android peint sa couleur de fond sous l'appli (ouverture du

@@ -43,6 +43,7 @@ const S = {
   stash: null, // brouillon du jour mis de côté pendant la modification d'une visite
   draftError: '',
   photoBusy: false,
+  saving: false, // visite en cours d'enregistrement : un second appui ne la double pas
   handedVisit: null, // visite entre les mains du client
   handedNext: null, // prochain rendez-vous de ce client (à partir de demain), montré sur son écran
   thanksNext: null, // le même, rappelé sur « Merci »
@@ -114,19 +115,13 @@ const fmtDateLong = (iso) => cap(fmtDateMid(iso));
 const fmtTime = (iso) => new Intl.DateTimeFormat('fr-FR', { hour: 'numeric', minute: '2-digit' }).format(new Date(iso)).replace(':', ' h ');
 const fmtClock = () => fmtTime(new Date().toISOString());
 
+// Forme courte de la liste des clients, mêmes arrondis que la fiche (agenda-core).
 function ago(iso) {
   const start = new Date(iso);
   start.setHours(0, 0, 0, 0);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const days = Math.round((today - start) / 86400000);
-  if (days <= 0) return 'aujourd’hui';
-  if (days === 1) return 'hier';
-  if (days < 14) return nb(`il y a ${days} j`);
-  if (days < 60) return nb(`il y a ${Math.round(days / 7)} sem.`);
-  if (days < 365) return nb(`il y a ${Math.round(days / 30)} mois`);
-  const y = Math.round(days / 365);
-  return nb(`il y a ${y} an${y > 1 ? 's' : ''}`);
+  return nb(core.agoText(Math.round((today - start) / 86400000), true));
 }
 
 const hasFormula = (f) => f && Object.values(f).some((v) => String(v).trim());
@@ -907,8 +902,10 @@ async function openApptClient(a) {
 async function linkAppt(apptId, client) {
   const a = apptId && (await db.getAppointment(apptId));
   if (!a || a.clientId) return;
-  const { localOnly, ...rest } = a;
+  // Nouvel identifiant : l'effacement en ligne posé par detachAppointments vise l'ancien.
+  const { localOnly, id, syncedAt, dirty, updatedAt, ...rest } = a;
   await db.saveAppointment({ ...rest, clientId: client.id, firstName: client.firstName, phone: client.phone });
+  await db.deleteAppointment(id, false);
   await refreshAppts();
 }
 
@@ -1492,10 +1489,10 @@ function viewDraft() {
       }
       ${
         d.editId
-          ? `<button type="button" class="btn btn-accent btn-lg" data-action="save-edit">${icon('check', 20)} Enregistrer les modifications</button>`
+          ? `<button type="button" class="btn btn-accent btn-lg" data-action="save-edit"${S.photoBusy ? ' disabled' : ''}>${icon('check', 20)} Enregistrer les modifications</button>`
           : (waiting || doneToday) && fresh
-            ? `<button type="button" class="btn btn-ghost btn-lg" data-action="handover">Nouvelle visite : passer la tablette ${icon('arrow', 20)}</button>`
-            : `<button type="button" class="btn btn-accent btn-lg" data-action="handover">Passer la tablette au client ${icon('arrow', 20)}</button>`
+            ? `<button type="button" class="btn btn-ghost btn-lg" data-action="handover"${S.photoBusy ? ' disabled' : ''}>Nouvelle visite : passer la tablette ${icon('arrow', 20)}</button>`
+            : `<button type="button" class="btn btn-accent btn-lg" data-action="handover"${S.photoBusy ? ' disabled' : ''}>Passer la tablette au client ${icon('arrow', 20)}</button>`
       }
     </div>
   </div>`;
@@ -1964,15 +1961,19 @@ async function selectClient(id) {
   parkDraft();
   S.validated = null; // la ligne « a validé sa fiche » de l'accueil a servi
   dropNotices((n) => !n.visitId && !n.sync); // les simples informations ne suivent pas sur une fiche
-  S.clientId = id;
-  S.client = await db.getClient(id);
-  await loadHistory();
-  S.tab = 'visit';
+  // Brouillon échangé avant toute attente : un second appel (double appui) range le bon brouillon.
   const saved = S.drafts.get(id) || restoreDraft(id);
   S.drafts.delete(id);
+  S.clientId = id;
   S.draft = saved?.draft || emptyDraft();
   S.stash = saved?.stash || null;
   S.draftError = '';
+  S.tab = 'visit';
+  const client = await db.getClient(id);
+  if (S.clientId !== id) return; // une autre fiche a été ouverte entre-temps
+  S.client = client;
+  await loadHistory();
+  if (S.clientId !== id) return;
   precheck(id);
 }
 
@@ -1997,12 +1998,16 @@ async function showWeek(monday, focus = null) {
 async function enterCoiffeur() {
   // Tablette reprise (ou fermée pour inactivité) avant que le client ait validé.
   if (S.handedVisit) {
+    // La fiche affichée a pu se refermer entre-temps (minuit passé) : on la relit.
+    const c = S.client?.id === S.handedVisit.clientId ? S.client : await db.getClient(S.handedVisit.clientId);
     dropNotices((n) => n.visitId === S.handedVisit.id);
     addNotice({
-      text: hasName(S.client)
-        ? `${fullName(S.client)} n’a pas validé sa visite.`
-        : `Une visite (fiche du ${fmtDayShort(S.client.createdAt)}) n’a pas été validée.`,
-      name: S.client.firstName || S.client.lastName || '',
+      text: hasName(c)
+        ? `${fullName(c)} n’a pas validé sa visite.`
+        : c
+          ? `Une visite (fiche du ${fmtDayShort(c.createdAt)}) n’a pas été validée.`
+          : 'Une visite n’a pas été validée.',
+      name: c?.firstName || c?.lastName || '',
       visitId: S.handedVisit.id,
       clientId: S.handedVisit.clientId
     });
@@ -2012,7 +2017,7 @@ async function enterCoiffeur() {
   }
   S.autoLocked = false;
   S.moving = null; // un déplacement laissé en plan au verrouillage n'attend plus à la reprise
-  forgetYesterdayDrafts();
+  if (forgetYesterdayDrafts()) await purgePastLocalOnly();
   await loadClients();
   await refreshAppts();
   if (S.clientId) await selectClient(S.clientId);
@@ -2269,6 +2274,42 @@ function showErrors(form, errors) {
 }
 
 // ---------- Actions ----------
+
+// La visite et ses photos, puis la tablette au client. Une photo qui ne s'enregistre pas défait la visite :
+// le brouillon reste, un nouvel appui ne crée pas de doublon.
+async function handOver() {
+  const d = S.draft;
+  const visit = await db.saveVisit({
+    clientId: S.clientId,
+    services: SERVICES.filter((s) => d.services.has(s)),
+    formula: { ...d.formula },
+    note: d.note.trim(),
+    status: 'pending'
+  });
+  try {
+    for (const p of d.photos) await db.addPhoto(visit.id, p.blob, p.thumb);
+  } catch (err) {
+    await db.deleteVisit(visit.id, false);
+    throw err;
+  }
+  dropDraft(d);
+  S.draft = emptyDraft();
+  await handTo(visit);
+}
+
+async function saveEdit() {
+  const d = S.draft;
+  const visit = await db.getVisit(d.editId);
+  await db.saveVisit({ ...visit, services: SERVICES.filter((s) => d.services.has(s)), formula: { ...d.formula }, note: d.note.trim() });
+  for (const id of d.removed) await db.deletePhoto(id);
+  for (const p of d.photos) if (!p.id) await db.addPhoto(visit.id, p.blob, p.thumb);
+  S.photoCache.delete(visit.id);
+  endEdit();
+  await loadHistory();
+  S.tab = 'history';
+  render({ top: true });
+  toast('Visite modifiée');
+}
 
 const actions = {
   unlock: () => askPin(enterCoiffeur, () => go('welcome')),
@@ -2629,19 +2670,13 @@ const actions = {
     back?.focus({ preventScroll: true });
   },
   handover: async () => {
-    if (!checkServices()) return;
-    const d = S.draft;
-    const visit = await db.saveVisit({
-      clientId: S.clientId,
-      services: SERVICES.filter((s) => d.services.has(s)),
-      formula: { ...d.formula },
-      note: d.note.trim(),
-      status: 'pending'
-    });
-    for (const p of d.photos) await db.addPhoto(visit.id, p.blob, p.thumb);
-    dropDraft(d);
-    S.draft = emptyDraft();
-    await handTo(visit);
+    if (S.photoBusy || S.saving || !checkServices()) return;
+    S.saving = true;
+    try {
+      await handOver();
+    } finally {
+      S.saving = false;
+    }
   },
   rehand: async (el) => {
     const visit = S.history.find((v) => v.id === el.dataset.visit);
@@ -2673,18 +2708,13 @@ const actions = {
     render({ top: true, focus: '#tab-history' });
   },
   'save-edit': async () => {
-    if (!checkServices()) return;
-    const d = S.draft;
-    const visit = await db.getVisit(d.editId);
-    await db.saveVisit({ ...visit, services: SERVICES.filter((s) => d.services.has(s)), formula: { ...d.formula }, note: d.note.trim() });
-    for (const id of d.removed) await db.deletePhoto(id);
-    for (const p of d.photos) if (!p.id) await db.addPhoto(visit.id, p.blob, p.thumb);
-    S.photoCache.delete(visit.id);
-    endEdit();
-    await loadHistory();
-    S.tab = 'history';
-    render({ top: true });
-    toast('Visite modifiée');
+    if (S.photoBusy || S.saving || !checkServices()) return;
+    S.saving = true;
+    try {
+      await saveEdit();
+    } finally {
+      S.saving = false;
+    }
   },
   'delete-visit': (el) => openModal({ type: 'confirm-delete', visitId: el.dataset.visit }),
   'confirm-delete': async () => {
@@ -2850,6 +2880,7 @@ app.addEventListener('submit', async (e) => {
   }
 
   if (form.dataset.form === 'client') {
+    if (S.modal.saving) return; // second appui pendant l'enregistrement : pas de seconde fiche
     const isNew = !S.modal.client.id;
     const errors = validateContact(val, true, false);
     if (showErrors(form, errors)) return;
@@ -2864,15 +2895,22 @@ app.addEventListener('submit', async (e) => {
       form.querySelector('[data-action="open-dup"]').focus();
       return;
     }
-    const saved = await db.saveClient({
-      ...S.modal.client,
-      firstName: val('firstName'),
-      lastName: val('lastName'),
-      phone: val('phone'),
-      email: val('email'),
-      allergies: val('allergies')
-    });
-    const apptId = isNew && S.modal.apptId;
+    const m = S.modal;
+    m.saving = true;
+    let saved;
+    try {
+      saved = await db.saveClient({
+        ...m.client,
+        firstName: val('firstName'),
+        lastName: val('lastName'),
+        phone: val('phone'),
+        email: val('email'),
+        allergies: val('allergies')
+      });
+    } finally {
+      m.saving = false;
+    }
+    const apptId = isNew && m.apptId;
     S.modal = null;
     S.modalReturn = null;
     await loadClients();
@@ -3075,14 +3113,19 @@ async function onPulled() {
 // sans redessiner l'écran (un rendu en plein appui ferait perdre le toucher).
 function tickClock() {
   // Minuit passé devant l'espace coiffeur ouvert : les visites de la veille s'effacent, l'écran suit.
-  if (forgetYesterdayDrafts() && S.view === 'coiffeur') {
-    S.modal = null;
-    loadClients()
-      .then(refreshAppts)
-      .then(() => {
-        render({ top: true });
-        scrollPlanToNow();
-      });
+  // Les rendez-vous gardés après un refus RGPD s'effacent aussi, même appli jamais relancée.
+  if (forgetYesterdayDrafts()) {
+    const purged = purgePastLocalOnly();
+    if (S.view === 'coiffeur') {
+      S.modal = null;
+      purged
+        .then(loadClients)
+        .then(refreshAppts)
+        .then(() => {
+          render({ top: true });
+          scrollPlanToNow();
+        });
+    }
   }
   const clock = document.getElementById('clock');
   if (clock) clock.textContent = fmtClock();
@@ -3097,13 +3140,18 @@ function tickClock() {
   setTimeout(tickClock, 60000 - (Date.now() % 60000) + 50);
 }
 
+// RGPD : un rendez-vous gardé sur la tablette après un refus (localOnly) part une fois son jour passé.
+function purgePastLocalOnly() {
+  const today = new Date();
+  return db.purgeLocalOnly(new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString());
+}
+
 // ---------- Démarrage ----------
 
 (async function boot() {
   applyTheme(document.documentElement.dataset.theme);
   if (navigator.storage?.persist) navigator.storage.persist();
-  const today = new Date();
-  await db.purgeLocalOnly(new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString());
+  await purgePastLocalOnly();
   await loadSavedDrafts();
   sync.start(onPulled);
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');

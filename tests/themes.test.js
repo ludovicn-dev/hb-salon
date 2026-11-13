@@ -144,6 +144,23 @@ test('le service worker met en cache l’appli, les thèmes et les polices', asy
   assert.deepEqual(files.filter((f) => !shell.includes(f)), [], 'polices absentes de SHELL');
 });
 
+// Icônes : celles du manifeste et du favicon existent et partent en cache sous la même adresse
+// (une adresse à part, comme ?v=…, n'était pas dans SHELL et ne faisait pas changer l'icône).
+test('les icônes du manifeste et du favicon existent et sont dans SHELL', async () => {
+  const vm = await import('node:vm');
+  const ctx = vm.createContext({ self: { addEventListener() {} } });
+  vm.runInContext(readFileSync(new URL('../app/sw.js', import.meta.url), 'utf8'), ctx);
+  const shell = vm.runInContext('SHELL', ctx);
+  const manifest = JSON.parse(readFileSync(new URL('../app/manifest.webmanifest', import.meta.url), 'utf8'));
+  const html = readFileSync(new URL('../app/index.html', import.meta.url), 'utf8');
+  const srcs = [...manifest.icons.map((i) => i.src), ...[...html.matchAll(/<link rel="(?:icon|apple-touch-icon)" href="([^"]+)"/g)].map((m) => m[1])];
+  assert.ok(manifest.icons.some((i) => i.sizes === '192x192') && manifest.icons.some((i) => i.sizes === '512x512'));
+  for (const src of srcs) {
+    assert.doesNotThrow(() => readFileSync(new URL(`../app/${src}`, import.meta.url)), `${src} absent`);
+    assert.ok(shell.includes(src), `${src} absent de SHELL`);
+  }
+});
+
 // Relecture finale : un thème déclare aussi son ton (color-scheme), le bouton enfoncé reste lisible,
 // chaque fichier de l'installation hors ligne existe, et les polices redistribuées ont leur licence.
 test('chaque bloc de thème déclare son ton clair ou sombre', () => {

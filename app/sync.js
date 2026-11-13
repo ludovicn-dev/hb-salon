@@ -406,15 +406,20 @@ async function countPending() {
 }
 
 async function run() {
-  if (!session) return;
+  // Connexion expirée : rien ne passera avant le mot de passe (signIn relance), et repasser par
+  // « syncing » redessinerait la fenêtre Sauvegarde en vidant le formulaire de connexion.
+  if (!session || status.state === 'auth') return;
   if (!navigator.onLine) {
     set({ state: 'offline', pending: await countPending() });
     return;
   }
   set({ state: 'syncing', error: '' });
   try {
+    // Effacements reçus avant l'envoi : une visite ou un rendez-vous d'une fiche effacée par une autre
+    // tablette serait refusé en ligne (clé étrangère) et bloquerait tous les tours suivants.
+    const erased = await pullTable('deletions', applyDeletion);
     await push();
-    const pulled = await pull();
+    const pulled = (await pull()) || erased;
     set({ state: 'idle', lastAt: new Date().toISOString(), pending: await countPending(), error: '', failures: 0 });
     await db.setSetting('syncLastAt', status.lastAt);
     if (pulled) onPulled();
@@ -459,7 +464,7 @@ export async function start(pulled) {
     schedule();
   });
   window.addEventListener('online', () => syncNow());
-  window.addEventListener('offline', () => session && set({ state: 'offline' }));
+  window.addEventListener('offline', () => session && status.state !== 'auth' && set({ state: 'offline' }));
   setInterval(syncNow, EVERY_MS);
   session = (await db.getSetting('supaSession')) || null;
   if (!session) return;
