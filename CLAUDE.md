@@ -32,6 +32,7 @@ PWA en JavaScript simple, sans framework ni étape de build, tout dans [app/](ap
   - Playwright du MCP : fichiers seulement dans le projet (captures dans `.playwright-mcp/`, ignoré par git), pas de `require`. Premier lancement : l'appli ouvre directement « Nouveau code ».
 - Synchro : avec un compte Supabase de test créé pour l'occasion puis supprimé, jamais celui du coiffeur ; deux contextes isolés = deux tablettes.
 - Revue de design : `/impeccable critique` (rapports dans [.impeccable/critique/](.impeccable/critique/)).
+- Ce que déclenche chaque bouton (geste → action → fonctions, et deux parcours jusqu'à l'envoi en ligne) : [docs/carte-des-gestes.md](docs/carte-des-gestes.md). Tableaux régénérés par `python -I -X utf8 tools/carte_gestes.py` après un changement d'`app.js` ; les parcours sont écrits à la main.
 
 ## Design « Élégance »
 Bleu nuit `#161D33`, or rose `#E3B59C`, Cormorant Garamond (titres) + Manrope (texte). Couleurs, durées d'animation, tailles de texte (`--fs-*` : 13, 14, 16, 18 px ; titres 32, 40, 56) et rayons (`--r-*`) en variables CSS dans `styles.css`, aucune valeur en dur ni taille intermédiaire.

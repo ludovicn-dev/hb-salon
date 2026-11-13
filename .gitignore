@@ -1,3 +1,4 @@
 .playwright-mcp/
 node_modules/
 .superpowers/
+graphify-out/
