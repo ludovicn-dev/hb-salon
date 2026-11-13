@@ -108,6 +108,8 @@ const nb = (s) => s.replaceAll(' ', '\u00a0');
 const nbDay = (s) => s.replace(/(\d) (?=\p{L})/u, '$1\u00a0');
 const SEP = '\u00a0· ';
 const fmtToday = () => cap(nbDay(new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())));
+// Forme courte (« Mer. 30 sept. ») quand la barre du haut manque de place.
+const fmtTodayShort = () => cap(nbDay(new Intl.DateTimeFormat('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }).format(new Date())));
 const fmtDay = (iso) => nbDay(new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long' }).format(new Date(iso)));
 const fmtDayShort = (iso) => nbDay(new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' }).format(new Date(iso)));
 const fmtDateMid = (iso) => nbDay(new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(iso)));
@@ -383,7 +385,19 @@ function closeModal() {
 
 // ---------- Rendu ----------
 
-const SCROLLERS = ['.detail', '.side', '.results', '.coiffeur-body', '.client', '.client-form', '.dialog', '.agenda', '.day-scroll'];
+const SCROLLERS = ['.detail', '.side', '.results', '.coiffeur-body', '.client', '.client-form', '.dialog', '.agenda', '.day-scroll', '.week-scroll'];
+
+// Rendez-vous qui vient d'être noté, déplacé ou rétabli : ramené en vue s'il est caché dans la zone qui défile.
+function revealFlash() {
+  const el = app.querySelector('.appt-block.flash');
+  const box = el?.closest('.week-scroll, .day-scroll');
+  if (!box) return;
+  const r = el.getBoundingClientRect();
+  const b = box.getBoundingClientRect();
+  const margin = 12;
+  if (r.top < b.top + margin) box.scrollTop -= b.top + margin - r.top;
+  else if (r.bottom > b.bottom - margin) box.scrollTop += Math.min(r.bottom - b.bottom + margin, r.top - b.top - margin);
+}
 
 // Redessine l'écran en gardant la position de défilement et le focus (sauf changement d'écran).
 function render({ top = false, focus = null } = {}) {
@@ -418,6 +432,7 @@ function render({ top = false, focus = null } = {}) {
       if (el && !(top && sel === '.detail')) el.scrollTop = scrolls[i];
     });
   }
+  if (S.flash) revealFlash();
   if (S.modal) app.firstElementChild.inert = true;
   hydratePhotos();
   // Titres focalisables par script : à l'arrivée sur un écran, le focus va au titre.
@@ -491,7 +506,7 @@ function viewCoiffeur() {
           <button type="button" class="space-btn" data-action="space" data-space="agenda" aria-pressed="${S.space === 'agenda'}">${icon('calendar', 22)} Agenda</button>
         </div>
       </div>
-      <p class="today"><span class="today-date">${fmtToday()}</span><span class="clock" id="clock">${fmtClock()}</span></p>
+      <p class="today"><span class="today-date"><span class="date-long">${fmtToday()}</span><span class="date-short">${fmtTodayShort()}</span></span><span class="clock" id="clock">${fmtClock()}</span></p>
       <div class="top-actions">
         <button type="button" class="${backupClass()}" data-action="backup" id="backup-btn">${backupLabel()}</button>
         <button type="button" class="btn btn-ghost btn-icon" data-action="settings" aria-label="Réglages" title="Réglages">${icon('gear', 22)}</button>
@@ -869,6 +884,8 @@ async function saveAppt(m) {
   const when = `${fmtDayTitle(saved.start).toLowerCase()} à ${fmtTime(saved.start)}.`;
   const late = issue?.reason === 'close'; // dépassement de 18 h forcé : rappelé
   agendaNote(`${what}${apptName(saved)}, ${when}${late ? ` Fin à ${fmtTime(core.endOf(saved).toISOString())}, après 18 h.` : ''}`);
+  // Rendez-vous noté par erreur (mauvais jour, mauvais client) : il s'efface d'un appui, comme une annulation.
+  if (!a) S.note.undo = { kind: 'created', id: saved.id, label: 'Annuler ce rendez-vous' };
   S.flash = saved.id;
   S.modalReturn = `.appt-block[data-id="${saved.id}"]`; // le focus va au rendez-vous noté
   closeModal();
@@ -880,6 +897,19 @@ async function saveAppt(m) {
 // la prochaine action, avec au besoin de quoi revenir en arrière.
 function agendaNote(text, undo = null) {
   S.note = { text, undo };
+}
+
+// Annulation sans fenêtre de confirmation : elle se défait d'un appui (« Rétablir » sous le titre).
+async function cancelAppt(a) {
+  const past = core.endOf(a) <= new Date(); // client pas venu, rendez-vous noté par erreur
+  await db.deleteAppointment(a.id);
+  await refreshAppts();
+  S.modal = null;
+  S.modalReturn = null;
+  const text = (name) => `Rendez-vous de ${name} ${past ? 'supprimé' : 'annulé'} (${fmtDayTitle(a.start).toLowerCase()} à ${fmtTime(a.start)}).`;
+  agendaNote(text(apptName(a)), { kind: 'cancel', appt: a, label: 'Rétablir' });
+  render({ focus: '[data-action="undo"]' });
+  announce(text(apptName(a, true)));
 }
 
 // Ouvre la fiche du rendez-vous, prestations prévues cochées si la visite du jour est encore vide.
@@ -944,6 +974,12 @@ async function moveTo(startIso, tapped = null) {
 async function undoAgenda() {
   const u = S.note?.undo;
   if (!u) return;
+  if (u.kind === 'created') {
+    const a = await db.getAppointment(u.id);
+    if (!a) return;
+    await cancelAppt(a);
+    return;
+  }
   let record;
   if (u.kind === 'move') {
     const a = await db.getAppointment(u.id);
@@ -1000,7 +1036,7 @@ async function loadWeek() {
   S.weekAppts = await db.appointmentsBetween(S.week.toISOString(), addDays(S.week, 7).toISOString());
 }
 
-// Un quart d'heure ne fait que 15 px : sa zone tactile déborde de 8 px sur ses voisins plus grands,
+// Un quart d'heure n'a que la moitié d'une demi-heure : sa zone tactile déborde de 8 px sur ses voisins plus grands,
 // jamais sur un autre quart d'heure (chacun garde au moins sa propre case).
 const REACH_PX = 8;
 function reachOf(spans) {
@@ -1071,11 +1107,11 @@ function viewDayColumn(day, appts, now, today = null) {
       // (prestations, durée, fin) dessous dès que le bloc a la hauteur de deux lignes.
       const tall = vis >= core.SLOT_MIN;
       const info = [a.services.join(', '), `${core.fmtDuration(a.duration)}, jusqu’à ${fmtTime(end.toISOString())}`].filter(Boolean).join(SEP);
-      // Au bout du bloc, « Rendez-vous » ouvre la fenêtre de l'agenda (annuler, déplacer, changer) ;
+      // Au bout du bloc, « Modifier » ouvre la fenêtre de l'agenda (annuler, déplacer, changer) ;
       // le reste du bloc ouvre la fiche. Côte à côte, il ne garde que son icône.
       const narrow = n > 1;
       const editStyle = `top:${pct(startMin)};height:${span(vis)};right:calc(${((n - lane - 1) / n) * 100}% + 2px)`;
-      const edit = `<button type="button" class="today-edit${narrow ? ' is-narrow' : ''}${vis < core.SLOT_MIN ? ' is-short' : ''}" style="${editStyle}" data-action="today-edit" data-id="${a.id}" aria-label="${esc(`Rendez-vous de ${apptName(a, true)} à ${fmtTime(a.start)} : modifier ou annuler`)}"><span class="today-edit-pill">${icon('calendar', 16)}<span class="today-edit-label">Rendez-vous</span></span></button>`;
+      const edit = `<button type="button" class="today-edit${narrow ? ' is-narrow' : ''}${vis < core.SLOT_MIN ? ' is-short' : ''}" style="${editStyle}" data-action="today-edit" data-id="${a.id}" aria-label="${esc(`Rendez-vous de ${apptName(a, true)} à ${fmtTime(a.start)} : modifier ou annuler`)}"><span class="today-edit-pill">${icon('calendar', 16)}<span class="today-edit-label">Modifier</span></span></button>`;
       items.push({
         min: startMin,
         html: `<button type="button" class="${cls}${narrow ? ' edit-narrow' : ''}" style="${style}" data-action="today-appt" data-id="${a.id}" aria-label="${esc(label)}">
@@ -1165,9 +1201,11 @@ function viewAgenda() {
       <span></span>
       ${days.map((d, i) => `<span class="day-head${d.toDateString() === now.toDateString() ? ' is-today' : ''}">${DAY_NAMES[i].slice(0, 3)} <strong>${d.getDate()}</strong></span>`).join('')}
     </div>
-    <div class="week-row week-body">
-      <div class="hours" aria-hidden="true">${hourMarks()}</div>
-      ${days.map((d) => viewDayColumn(d, S.weekAppts.filter((a) => new Date(a.start).toDateString() === d.toDateString()), now)).join('')}
+    <div class="week-scroll">
+      <div class="week-row week-body">
+        <div class="hours" aria-hidden="true">${hourMarks()}</div>
+        ${days.map((d) => viewDayColumn(d, S.weekAppts.filter((a) => new Date(a.start).toDateString() === d.toDateString()), now)).join('')}
+      </div>
     </div>
   </div>`;
 }
@@ -1236,12 +1274,16 @@ const viewValidated = () =>
     ? `<p class="done-line validated-line">${icon('check', 18)}<span><strong>${esc(S.validated.name)}</strong> a validé sa fiche à ${fmtTime(S.validated.at)}.</span></p>`
     : '';
 
-// Le planning du jour défile dans sa propre zone (titre, messages et bandeaux restent en vue) ;
-// à l'arrivée, il se cale une demi-heure avant maintenant.
+// Le planning du jour et la semaine défilent dans leur propre zone (titre, messages et bandeaux restent
+// en vue) ; à l'arrivée, ils se calent une demi-heure avant maintenant. Une autre semaine part de l'ouverture.
 function scrollPlanToNow() {
-  const box = app.querySelector('.day-scroll');
-  const col = box?.querySelector('.day-col');
-  if (!col) return;
+  const box = app.querySelector('.day-scroll, .week-scroll');
+  if (!box) return;
+  const col = box.querySelector('.day-col.is-today') || (box.matches('.day-scroll') ? box.querySelector('.day-col') : null);
+  if (!col) {
+    box.scrollTop = 0;
+    return;
+  }
   // Position de la colonne dans la zone qui défile (marge haute du planning comprise), puis quelques pixels
   // de marge : le libellé d'heure centré sur la ligne et le haut du rendez-vous restent entiers.
   const colTop = col.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop;
@@ -1368,7 +1410,9 @@ function viewClientDetail() {
   if (c.consentAt) meta.push(consentLine(c));
   // En-tête ramassé : qui (coordonnées, accord), puis ce qui sert au travail (couleur, rendez-vous).
   const facts = [lastColorLine(), nextApptLine()].filter(Boolean);
+  // Sortie visible de la fiche (le bouton « Aujourd'hui » du haut fait la même chose, mais rien ne le dit).
   return `
+  <button type="button" class="link back-link" data-action="space" data-space="today">${icon('left', 18)} Planning du jour</button>
   <div class="client-head">
     <div class="client-id">
       <h1 class="serif${fullName(c).length > 28 ? ' is-long' : ''}">${esc(fullName(c))}</h1>
@@ -1403,6 +1447,8 @@ function viewDraft() {
   // Le rappel ne disparaît pas quand on coche : rien ne saute sous le doigt, seul le bouton or change de place.
   const fresh = !d.editId && !draftHasContent(d);
   const waiting = d.editId ? null : latestPending();
+  // Client reparti sans valider un autre jour : plus rien à repasser maintenant, ce sera à sa prochaine visite.
+  const stale = waiting && !isToday(waiting.date);
   const doneToday = d.editId || waiting ? null : S.history.find((v) => v.status === 'done' && isToday(v.date));
   const field = (key, label, ph) =>
     `<label class="field">${label}<input data-bind="formula.${key}" value="${esc(f[key])}" placeholder="${ph}" autocomplete="off"></label>`;
@@ -1419,8 +1465,8 @@ function viewDraft() {
     ${
       waiting
         ? `<div class="waiting">
-            <span>${icon('clock', 18)} La visite <strong>${whenOf(waiting)}</strong> (${esc(waiting.services.join(', '))}) attend la validation du client.</span>
-            <button type="button" class="btn ${fresh ? 'btn-accent' : 'btn-ghost'}" data-action="rehand" data-visit="${waiting.id}">${icon('tablet', 18)} Repasser la tablette</button>
+            <span>${icon('clock', 18)} La visite <strong>${whenOf(waiting)}</strong> (${esc(waiting.services.join(', '))}) ${stale ? 'n’a pas été validée : repassez la tablette au client à sa prochaine visite.' : 'attend la validation du client.'}</span>
+            <button type="button" class="btn ${fresh && !stale ? 'btn-accent' : 'btn-ghost'}" data-action="rehand" data-visit="${waiting.id}">${icon('tablet', 18)} Repasser la tablette</button>
           </div>`
         : doneToday
           ? `<p class="done-line visit-done">${icon('check', 18)}<span>Visite d’aujourd’hui (${esc(doneToday.services.join(', '))}) validée${doneToday.validatedAt ? ` à ${fmtTime(doneToday.validatedAt)}` : ''}.</span>
@@ -1449,7 +1495,7 @@ function viewDraft() {
           ? `<div class="allergy allergy-mini allergy-formula">${icon('alert', 18)}<p><strong>Allergies</strong> <span>${esc(S.client.allergies)}</span></p></div>`
           : ''
       }
-      <div class="grid4">
+      <div class="grid4 grid-formula">
         ${field('brand', 'Marque', 'ex. Majirel')}
         ${field('shade', 'Nuance', 'ex. 6.34 + 7.3')}
         ${field('oxidant', 'Oxydant', 'ex. 20 vol · 1/1,5')}
@@ -1490,7 +1536,7 @@ function viewDraft() {
       ${
         d.editId
           ? `<button type="button" class="btn btn-accent btn-lg" data-action="save-edit"${S.photoBusy ? ' disabled' : ''}>${icon('check', 20)} Enregistrer les modifications</button>`
-          : (waiting || doneToday) && fresh
+          : ((waiting && !stale) || doneToday) && fresh
             ? `<button type="button" class="btn btn-ghost btn-lg" data-action="handover"${S.photoBusy ? ' disabled' : ''}>Nouvelle visite : passer la tablette ${icon('arrow', 20)}</button>`
             : `<button type="button" class="btn btn-accent btn-lg" data-action="handover"${S.photoBusy ? ' disabled' : ''}>Passer la tablette au client ${icon('arrow', 20)}</button>`
       }
@@ -1790,10 +1836,17 @@ function viewModal() {
     body = viewApptDialog(m);
   } else if (m.type === 'confirm-delete') {
     const v = S.history.find((x) => x.id === m.visitId);
+    // Ce qui part avec la visite, seulement ce qui existe.
+    const parts = [
+      v && hasFormula(v.formula) ? 'sa formule' : '',
+      v?.note?.trim() ? 'sa note' : '',
+      m.photos ? (m.photos > 1 ? `ses ${m.photos} photos` : 'sa photo') : ''
+    ].filter(Boolean);
+    const withParts = parts.length ? `, avec ${parts.length > 1 ? `${parts.slice(0, -1).join(', ')} et ${parts[parts.length - 1]}` : parts[0]}` : '';
     body = `
       <div class="dialog dialog-sm">
         <h2 class="serif" id="dlg-title">Supprimer cette visite ?</h2>
-        <p class="muted">Visite du ${v ? `${fmtDateMid(v.date)} à ${fmtTime(v.date)}` : ''}, avec sa formule, sa note et ses photos. C’est définitif.</p>
+        <p class="muted">Visite du ${v ? `${fmtDateMid(v.date)} à ${fmtTime(v.date)}` : ''}${withParts}. C’est définitif.</p>
         <div class="form-actions">
           <button type="button" class="btn btn-ghost" data-action="close-modal" data-autofocus>Annuler</button>
           <button type="button" class="btn btn-danger" data-action="confirm-delete">${icon('trash', 18)} Supprimer la visite</button>
@@ -2246,15 +2299,41 @@ function validateContact(val, strict, you = true) {
   return errors;
 }
 
-const sameName = (c, val) => Boolean(val('firstName') && val('lastName') && norm(c.firstName) === norm(val('firstName')) && norm(c.lastName) === norm(val('lastName')));
-
-function findDuplicate(val) {
+// Fiches qui ressemblent à celle qu'on crée. La même personne d'abord : même nom complet, ou même prénom
+// au même numéro (parent et enfant partagent souvent un téléphone, comme dans l'agenda : la fiche du même
+// prénom est la bonne). Sinon, toutes les fiches du numéro (la famille).
+function findDuplicates(val) {
   const phone = digits(val('phone'));
   const first = norm(val('firstName'));
   const last = norm(val('lastName'));
-  return S.clients.find(
-    (c) => (phone.length >= 6 && digits(c.phone) === phone) || (first && last && norm(c.firstName) === first && norm(c.lastName) === last)
+  const atPhone = phone.length >= 6 ? S.clients.filter((c) => digits(c.phone) === phone) : [];
+  const same = S.clients.filter(
+    (c) => first && norm(c.firstName) === first && ((last && norm(c.lastName) === last) || atPhone.includes(c))
   );
+  return same.length ? { same: same[0] } : atPhone.length ? { family: atPhone } : null;
+}
+
+const MAX_DUP = 3; // fiches de la famille proposées au plus (au-delà, la recherche les retrouve)
+
+// Message de doublon, sous le formulaire : la même personne s'ouvre en action principale ; une famille
+// au même numéro laisse « Créer quand même » en or (c'est souvent un enfant qu'on ajoute).
+function viewDuplicate(dup) {
+  if (dup.same) {
+    const c = dup.same;
+    return `<div class="notice notice-inline" role="alert">${icon('info', 20)}
+      <span>Une fiche existe déjà : <strong>${esc(fullName(c))}</strong>${c.phone ? `, ${esc(fmtPhone(c.phone))}` : ''}.</span>
+      <button type="button" class="btn btn-sm btn-accent" data-action="open-dup" data-id="${c.id}" data-link="1">Ouvrir cette fiche</button></div>`;
+  }
+  const list = dup.family.slice(0, MAX_DUP);
+  const phone = esc(fmtPhone(list[0].phone));
+  const names = list.map((c) => `<strong>${esc(fullName(c))}</strong>`);
+  const who = names.length > 1 ? `${names.slice(0, -1).join(', ')} et ${names[names.length - 1]}` : names[0];
+  const buttons = list
+    .map((c) => `<button type="button" class="btn btn-sm btn-ghost" data-action="open-dup" data-id="${c.id}">${list.length > 1 ? `Ouvrir ${esc(c.firstName || fullName(c))}` : 'Ouvrir cette fiche'}</button>`)
+    .join('');
+  return `<div class="notice notice-inline notice-dup" role="alert">${icon('info', 20)}
+    <span>Le ${phone} est déjà sur ${list.length > 1 ? 'les fiches de' : 'la fiche de'} ${who}. Même famille ?</span>
+    <span class="dup-actions">${buttons}</span></div>`;
 }
 
 // Affiche chaque erreur sous son champ et place le focus sur le premier champ en erreur.
@@ -2493,21 +2572,13 @@ const actions = {
     if (a) openApptModal(a);
   },
   // Pas de fenêtre de confirmation : l'annulation se défait d'un appui (« Rétablir » sous le titre).
-  'appt-cancel': async () => {
-    const a = findAppt(S.modal.id);
-    const past = core.endOf(a) <= new Date(); // client pas venu, rendez-vous noté par erreur
-    await db.deleteAppointment(a.id);
-    await refreshAppts();
-    S.modal = null;
-    S.modalReturn = null;
-    const text = (name) => `Rendez-vous de ${name} ${past ? 'supprimé' : 'annulé'} (${fmtDayTitle(a.start).toLowerCase()} à ${fmtTime(a.start)}).`;
-    agendaNote(text(apptName(a)), { kind: 'cancel', appt: a, label: 'Rétablir' });
-    render({ focus: '[data-action="undo"]' });
-    announce(text(apptName(a, true)));
-  },
+  'appt-cancel': () => cancelAppt(findAppt(S.modal.id)),
   'week-prev': () => showWeek(addDays(S.week, -7)),
   'week-next': () => showWeek(addDays(S.week, 7)),
-  'week-now': () => showWeek(core.defaultWeek(new Date()), '[data-action="week-next"]'),
+  'week-now': async () => {
+    await showWeek(core.defaultWeek(new Date()), '[data-action="week-next"]');
+    scrollPlanToNow();
+  },
   'export-clients': exportClients,
   'export-visits': exportVisits,
   select: async (el) => {
@@ -2716,7 +2787,7 @@ const actions = {
       S.saving = false;
     }
   },
-  'delete-visit': (el) => openModal({ type: 'confirm-delete', visitId: el.dataset.visit }),
+  'delete-visit': async (el) => openModal({ type: 'confirm-delete', visitId: el.dataset.visit, photos: await db.photoCount(el.dataset.visit) }),
   'confirm-delete': async () => {
     const id = S.modal.visitId;
     await db.deleteVisit(id);
@@ -2885,13 +2956,14 @@ app.addEventListener('submit', async (e) => {
     const errors = validateContact(val, true, false);
     if (showErrors(form, errors)) return;
     // Doublon probable : on le signale une fois, un second appui crée quand même la fiche.
-    const dup = isNew && !S.modal.dupChecked && findDuplicate(val);
+    const dup = isNew && !S.modal.dupChecked && findDuplicates(val);
     if (dup) {
       S.modal.dupChecked = true;
-      form.querySelector('.dup-slot').innerHTML = `<div class="notice notice-inline" role="alert">${icon('info', 20)}
-        <span>${sameName(dup, val) ? `Une fiche existe déjà : <strong>${esc(fullName(dup))}</strong>${dup.phone ? `, ${esc(fmtPhone(dup.phone))}` : ''}.` : `Le ${esc(fmtPhone(dup.phone))} est déjà sur la fiche de <strong>${esc(fullName(dup))}</strong>. Même famille ?`}</span>
-        <button type="button" class="btn btn-sm btn-ghost" data-action="open-dup" data-id="${dup.id}"${sameName(dup, val) ? ' data-link="1"' : ''}>Ouvrir cette fiche</button></div>`;
-      form.querySelector('#client-submit').textContent = 'Créer quand même';
+      form.querySelector('.dup-slot').innerHTML = viewDuplicate(dup);
+      const submit = form.querySelector('#client-submit');
+      submit.textContent = 'Créer quand même';
+      // Un seul bouton or : il passe à « Ouvrir cette fiche » quand c'est la même personne.
+      if (dup.same) submit.classList.replace('btn-accent', 'btn-ghost');
       form.querySelector('[data-action="open-dup"]').focus();
       return;
     }
@@ -2901,8 +2973,8 @@ app.addEventListener('submit', async (e) => {
     try {
       saved = await db.saveClient({
         ...m.client,
-        firstName: val('firstName'),
-        lastName: val('lastName'),
+        firstName: capName(val('firstName')),
+        lastName: capName(val('lastName')),
         phone: val('phone'),
         email: val('email'),
         allergies: val('allergies')
@@ -2957,10 +3029,12 @@ app.addEventListener('submit', async (e) => {
     if (showErrors(form, validateContact(val, true))) return;
     const stampNow = new Date().toISOString();
     const client = await db.getClient(S.handedVisit.clientId);
+    const firstName = capName(val('firstName'));
+    const lastName = capName(val('lastName'));
     await db.saveClient({
       ...client,
-      firstName: val('firstName'),
-      lastName: val('lastName'),
+      firstName,
+      lastName,
       phone: val('phone'),
       email: val('email'),
       consentAt: client.consentAt || stampNow
@@ -2968,8 +3042,8 @@ app.addEventListener('submit', async (e) => {
     const visit = await db.getVisit(S.handedVisit.id);
     await db.saveVisit({ ...visit, status: 'done', validatedAt: stampNow });
     dropNotices((n) => n.visitId === visit.id);
-    S.validated = { name: [val('firstName'), val('lastName')].filter(Boolean).join(' '), at: stampNow };
-    finishCheckout(val('firstName'), 'Votre fiche est enregistrée.');
+    S.validated = { name: [firstName, lastName].filter(Boolean).join(' '), at: stampNow };
+    finishCheckout(firstName, 'Votre fiche est enregistrée.');
   }
 });
 
