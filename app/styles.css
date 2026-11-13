@@ -1,6 +1,6 @@
 /* Jetons de thème. Élégance sert de base : ses valeurs valent pour :root (tout jeton qu'un autre thème ne
    redonne pas) et pour tout élément marqué data-theme="elegance". Les autres thèmes sont dans themes.css ;
-   le thème par défaut, Barbier, est posé sur <html data-theme> dans index.html.
+   le thème par défaut, Élégance, est posé sur <html data-theme> dans index.html.
    --accent : or des repères (texte, bords, état choisi, icônes) ; --accent-fill : fonds dorés (bouton
    principal, case cochée), avec --on-accent pour le texte posé dessus. Thèmes clairs : --accent plus foncé. */
 :root, [data-theme="elegance"] {
