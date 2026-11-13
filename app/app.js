@@ -30,7 +30,8 @@ const S = {
   pinLockedUntil: 0,
   query: '',
   clients: [],
-  lastVisit: new Map(), // clientId -> date ISO
+  lastVisit: new Map(), // clientId -> date ISO (toutes visites : ordre de la liste)
+  lastDone: new Map(), // clientId -> date ISO de la dernière visite validée (texte de la liste, export)
   pending: new Map(), // clientId -> nombre de visites non validées
   drafts: new Map(), // clientId -> { draft, stash } : visites en cours des autres clients
   savedDrafts: new Map(), // clientId -> brouillon du jour retrouvé sur la tablette après une fermeture de l'appli
@@ -1268,11 +1269,11 @@ function viewResults() {
     (S.query ? '' : `<p class="label small-label">Récents</p>`) +
     list
       .map((c) => {
-        const last = S.lastVisit.get(c.id);
+        const last = S.lastDone.get(c.id);
         const sub = [
           hasName(c) ? '' : `fiche du ${fmtDayShort(c.createdAt)}`,
           fmtPhone(c.phone),
-          last ? `dernière visite ${ago(last)}` : 'aucune visite'
+          last ? `dernière visite ${ago(last)}` : S.lastVisit.has(c.id) ? 'aucune visite validée' : 'aucune visite'
         ]
           .filter(Boolean)
           .join(SEP);
@@ -1953,6 +1954,7 @@ async function loadClients() {
   const [clients, visits] = await Promise.all([db.allClients(), db.allVisits()]);
   S.clients = clients;
   S.lastVisit = new Map();
+  S.lastDone = new Map();
   S.pending = new Map();
   S.todayVisits = new Map();
   for (const v of visits) {
@@ -1963,6 +1965,8 @@ async function loadClients() {
     }
     const cur = S.lastVisit.get(v.clientId);
     if (!cur || v.date > cur) S.lastVisit.set(v.clientId, v.date);
+    const done = S.lastDone.get(v.clientId);
+    if (v.status === 'done' && (!done || v.date > done)) S.lastDone.set(v.clientId, v.date);
     if (v.status === 'pending') S.pending.set(v.clientId, (S.pending.get(v.clientId) || 0) + 1);
   }
 }
@@ -2323,18 +2327,12 @@ async function exportClients() {
   const visits = await db.allVisits();
   // Même règle que la fiche : seules comptent les visites validées par le client.
   const count = new Map();
-  const last = new Map();
-  visits
-    .filter((v) => v.status === 'done')
-    .forEach((v) => {
-      count.set(v.clientId, (count.get(v.clientId) || 0) + 1);
-      if (!last.has(v.clientId) || v.date > last.get(v.clientId)) last.set(v.clientId, v.date);
-    });
+  visits.filter((v) => v.status === 'done').forEach((v) => count.set(v.clientId, (count.get(v.clientId) || 0) + 1));
   const rows = [['Prénom', 'Nom', 'Téléphone', 'E-mail', 'Allergies / sensibilités', 'Consentement RGPD', 'Fiche créée le', 'Nb visites validées', 'Dernière visite validée']];
   [...S.clients]
     .sort((a, b) => norm(a.lastName + a.firstName).localeCompare(norm(b.lastName + b.firstName)))
     .forEach((c) =>
-      rows.push([c.firstName, c.lastName, fmtPhone(c.phone), c.email, c.allergies, consentCsv(c), dateFr(c.createdAt), count.get(c.id) || 0, dateFr(last.get(c.id))])
+      rows.push([c.firstName, c.lastName, fmtPhone(c.phone), c.email, c.allergies, consentCsv(c), dateFr(c.createdAt), count.get(c.id) || 0, dateFr(S.lastDone.get(c.id))])
     );
   download(`hb-salon-clients-${stamp()}.csv`, csv(rows));
 }
