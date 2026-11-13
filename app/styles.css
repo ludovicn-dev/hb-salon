@@ -570,6 +570,7 @@ h2.label { font-weight: 400; }
   border: 1px solid var(--control-line);
   border-radius: var(--r-sm);
   padding: 12px;
+  min-height: 44px; /* zone tactile, quelle que soit la hauteur de ligne de la police du thème */
   font-size: var(--fs-md);
   color: var(--text);
   outline: none;
@@ -864,6 +865,23 @@ button.photo:active { border-color: var(--accent); }
 .dlg-section h3 { margin: 0; font-size: var(--fs-md); font-weight: 600; color: var(--text); }
 .dlg-section-first { padding-top: 0; border-top: none; }
 .backup-login { display: flex; flex-direction: column; gap: 12px; }
+/* Mot de passe : l'œil au bout du champ l'affiche en clair (vérifier ce qui a été tapé sur la tablette). */
+.pw-field { position: relative; display: flex; }
+.pw-field input { flex: 1; min-width: 0; padding-right: 52px; }
+.pw-toggle {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 48px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  background: none;
+  color: var(--muted);
+  transition: color var(--t-press), background-color var(--t-press);
+}
+.pw-toggle:active { color: var(--text); background: var(--panel-2); }
+.pw-toggle[aria-pressed='true'] { color: var(--accent); }
 
 /* État de la sauvegarde : neutre si tout va bien, or + horloge en attente, corail en panne. */
 .sync-state { display: flex; gap: 12px; align-items: flex-start; }
@@ -1077,7 +1095,8 @@ button.photo:active { border-color: var(--accent); }
   .topbar { padding: 12px 20px; gap: 12px; }
   .today-date { display: none; }
   .space-switch { margin-left: 0; }
-  .space-btn { --space-pad: 16px; }
+  .space-btn { --space-pad: 12px; }
+  .today { min-width: max-content; } /* l'heure garde son écart avec « Sauvegarde » */
   .lock-btn { padding-inline: 12px; min-width: 48px; justify-content: center; }
   .lock-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .draft-foot { flex-wrap: wrap; }
@@ -1160,7 +1179,7 @@ button.photo:active { border-color: var(--accent); }
 .today-block { gap: 2px; padding: 6px var(--edit-space) 6px 12px; font-size: var(--fs-md); }
 /* Bouton « Rendez-vous » posé au bout de chaque bloc du jour (frère du bloc, pas dedans) : toute la hauteur
    du bloc se touche, la pastille se voit ; le bloc lui laisse sa place à droite (--edit-space). */
-.day-col { --edit-space: 150px; }
+.day-col { --edit-space: 132px; } /* la pastille la plus large des thèmes fait 122 px */
 .today-block.edit-narrow { --edit-space: 64px; }
 .today-edit {
   position: absolute;
@@ -1192,12 +1211,18 @@ button.photo:active { border-color: var(--accent); }
 /* Bloc d'un quart d'heure : la pastille tient dans sa hauteur. */
 .today-edit.is-short { align-items: center; padding-top: 0; }
 .today-edit.is-short .today-edit-pill { height: 26px; }
+/* Sa zone tactile déborde sur les voisins plus grands, comme le bloc qu'elle borde (reachOf). */
+.today-edit.is-short::before { content: ''; position: absolute; inset: calc(-1 * var(--reach-up, 0px)) 0 calc(-1 * var(--reach-down, 0px)); }
 .today-block .appt-sub { font-size: var(--fs-sm); } /* le détail sous le nom, un cran plus bas : il tient en portrait */
 .today-block.next { box-shadow: inset 0 0 0 1.5px var(--accent); }
 .today-block.short { padding-block: 0; }
 .today-line { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; font-weight: 700; }
 .today-line .appt-n { flex: 0 1 auto; }
+/* Bloc assez haut : un nom long passe sur deux lignes au lieu d'être coupé (portrait surtout). */
+.today-block.roomy .today-line { align-items: baseline; }
+.today-block.roomy .appt-n { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .today-tags { display: flex; align-items: center; gap: 14px; flex-shrink: 0; margin-left: auto; font-weight: 600; }
+.today-tags:empty { display: none; } /* sans état ni allergie, le nom garde aussi l'écart */
 /* Rendez-vous côte à côte (colonne étroite) : les étiquettes se réduisent à leur icône, le nom garde sa place ;
    l'état complet reste dans le libellé lu par le lecteur d'écran. */
 .today-block { container-type: inline-size; }

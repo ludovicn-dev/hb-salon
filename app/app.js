@@ -230,6 +230,8 @@ const ICONS = {
   cloud: '<path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 10.5 3.75 3.75 0 0 1 17.25 18z"/>',
   calendar: '<rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',
   card: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2.5"/><path d="M14 10h4M14 14h4M5.5 16.5c.8-1.4 2-2 3.5-2s2.7.6 3.5 2"/>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  eyeOff: '<path d="M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-2.2 3.2M6.6 6.6C3.7 8.4 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2M3 3l18 18"/>',
   left: '<path d="M15 5l-7 7 7 7"/>',
   right: '<path d="M9 5l7 7-7 7"/>',
   move: '<path d="M12 3v18M3 12h18M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/>',
@@ -716,10 +718,10 @@ function viewApptDialog(m) {
       ${c?.allergies ? `<div class="allergy allergy-mini">${icon('alert', 18)}<p><strong>Allergies</strong> <span>${esc(c.allergies)}</span></p></div>` : ''}`
     : `<div class="appt-ident">
         <label class="field">Téléphone
-          <input name="apptQuery" type="tel" inputmode="tel" value="${esc(m.query)}" autocomplete="off" data-autofocus>
+          <input name="apptQuery" type="tel" inputmode="tel" value="${esc(m.query)}" autocomplete="off" aria-describedby="appt-who-err"${m.whoField === 'apptQuery' ? ' aria-invalid="true"' : ''} data-autofocus>
         </label>
         <label class="field">Prénom
-          <input name="apptFirst" type="text" value="${esc(apptFirstName(m))}" autocomplete="off" autocapitalize="words">
+          <input name="apptFirst" type="text" value="${esc(apptFirstName(m))}" autocomplete="off" autocapitalize="words" aria-describedby="appt-who-err"${m.whoField === 'apptFirst' ? ' aria-invalid="true"' : ''}>
         </label>
       </div>
       <p class="err err-inline" id="appt-who-err" role="alert">${esc(m.whoError)}</p>
@@ -757,6 +759,15 @@ function viewApptDialog(m) {
         </div>
       </div>
     </form>`;
+}
+
+// Champ « qui » en faute (bord corail, lu comme invalide), sans redessiner la fenêtre ni fermer le clavier.
+function markWho(field) {
+  for (const name of ['apptQuery', 'apptFirst']) {
+    const input = app.querySelector(`[name="${name}"]`);
+    if (name === field) input?.setAttribute('aria-invalid', 'true');
+    else input?.removeAttribute('aria-invalid');
+  }
 }
 
 // Prénom affiché : celui de la fiche choisie, sinon celui qui a été tapé.
@@ -806,8 +817,10 @@ async function saveAppt(m) {
   // (en bas de la fenêtre, le message restait caché derrière le clavier).
   const failWho = (msg, field = null) => {
     m.whoError = msg;
+    m.whoField = field;
     const slot = app.querySelector('#appt-who-err');
     if (slot) slot.textContent = msg;
+    markWho(field);
     announce(msg);
     if (field) app.querySelector(`[name="${field}"]`)?.focus();
     slot?.scrollIntoView({ block: 'nearest' });
@@ -1049,6 +1062,9 @@ function reachOf(spans) {
   };
 }
 
+// Planning du jour : à partir de 45 min, un nom long passe sur deux lignes et le détail tient encore dessous.
+const ROOMY_MIN = 45;
+
 // Les créneaux et les rendez-vous sont écrits dans l'ordre des heures (lecture d'écran) ; le temps
 // écoulé est voilé et n'offre plus de créneau.
 function viewDayColumn(day, appts, now, today = null) {
@@ -1092,6 +1108,7 @@ function viewDayColumn(day, appts, now, today = null) {
       (done || v?.status === 'done') && 'past',
       live && 'live',
       today && a.id === today.next && 'next',
+      today && vis >= ROOMY_MIN && 'roomy',
       vis < core.SLOT_MIN && 'short',
       late && 'late',
       S.moving?.id === a.id && 'moving',
@@ -1110,7 +1127,7 @@ function viewDayColumn(day, appts, now, today = null) {
       // Au bout du bloc, « Modifier » ouvre la fenêtre de l'agenda (annuler, déplacer, changer) ;
       // le reste du bloc ouvre la fiche. Côte à côte, il ne garde que son icône.
       const narrow = n > 1;
-      const editStyle = `top:${pct(startMin)};height:${span(vis)};right:calc(${((n - lane - 1) / n) * 100}% + 2px)`;
+      const editStyle = `top:${pct(startMin)};height:${span(vis)};right:calc(${((n - lane - 1) / n) * 100}% + 2px)${reach(startMin, startMin + vis)}`;
       const edit = `<button type="button" class="today-edit${narrow ? ' is-narrow' : ''}${vis < core.SLOT_MIN ? ' is-short' : ''}" style="${editStyle}" data-action="today-edit" data-id="${a.id}" aria-label="${esc(`Rendez-vous de ${apptName(a, true)} à ${fmtTime(a.start)} : modifier ou annuler`)}"><span class="today-edit-pill">${icon('calendar', 16)}<span class="today-edit-label">Modifier</span></span></button>`;
       items.push({
         min: startMin,
@@ -1791,7 +1808,14 @@ function viewModal() {
       ? `<form data-form="login" class="backup-login" novalidate>
           <div class="grid2">
             ${inputField('field', 'email', 'E-mail du compte du salon', 'email', st.email, `inputmode="email" autocomplete="username"${st.email ? '' : ' data-autofocus'}`)}
-            ${inputField('field', 'password', 'Mot de passe', 'password', '', `autocomplete="current-password"${st.email ? ' data-autofocus' : ''}`)}
+            <div class="field">
+              <label for="login-password">Mot de passe</label>
+              <span class="pw-field">
+                <input id="login-password" name="password" type="password" value="" aria-describedby="err-password" autocomplete="current-password"${st.email ? ' data-autofocus' : ''}>
+                <button type="button" class="pw-toggle" data-action="toggle-pw" aria-pressed="false" aria-label="Afficher le mot de passe">${icon('eye', 20)}</button>
+              </span>
+              <span class="field-err" id="err-password" aria-hidden="true"></span>
+            </div>
           </div>
           <p class="err err-inline" id="login-err" role="alert"></p>
           <div class="form-actions"><button type="submit" class="btn btn-accent">Se connecter</button></div>
@@ -2477,6 +2501,14 @@ const actions = {
     render({ focus: `.theme-tile[data-id="${id}"]` });
     announce(`Thème ${THEMES.find((t) => t.id === id).name} appliqué`);
   },
+  // Sans redessiner la fenêtre : le mot de passe tapé et le clavier restent.
+  'toggle-pw': (el) => {
+    const input = el.parentElement.querySelector('input');
+    const shown = input.type === 'password';
+    input.type = shown ? 'text' : 'password';
+    el.setAttribute('aria-pressed', String(shown));
+    el.innerHTML = icon(shown ? 'eyeOff' : 'eye', 20);
+  },
   'sync-now': () => {
     if (navigator.onLine) sync.syncNow();
     else toast('Pas de réseau pour l’instant : l’envoi partira tout seul au retour du réseau.');
@@ -2541,6 +2573,7 @@ const actions = {
     m.prev = m.clientId ? await db.appointmentsOf(m.clientId) : [];
     m.error = '';
     m.whoError = '';
+    m.whoField = null;
     prefill(m);
     render();
   },
@@ -2552,6 +2585,7 @@ const actions = {
     m.prev = [];
     m.error = '';
     m.whoError = '';
+    m.whoField = null;
     prefill(m);
     render({ focus: m.other ? '[name="apptFirst"]' : null });
   },
@@ -2937,6 +2971,8 @@ app.addEventListener('input', (e) => {
     else m.firstName = el.value;
     m.error = '';
     m.whoError = '';
+    m.whoField = null;
+    markWho(null);
     // Une fiche choisie qui ne correspond plus au numéro, ou au prénom tapé, est oubliée.
     const chosen = m.clientId && S.clients.find((c) => c.id === m.clientId);
     const stale =

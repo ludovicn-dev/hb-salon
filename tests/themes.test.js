@@ -61,8 +61,10 @@ const PAIRS = [
   ['--control-line', '--bg', 3],
   ['--control-line', '--panel', 3],
   ['--control-line-2', '--panel-2', 3],
-  ['--placeholder', '--panel', 3],
-  ['--placeholder', '--bg', 3],
+  // Textes d'exemple des champs : lisibles comme un texte (4,5:1) ; l'italique et la taille réduite
+  // les distinguent de ce qui est tapé.
+  ['--placeholder', '--panel', 4.5],
+  ['--placeholder', '--bg', 4.5],
 ];
 
 test('la liste commence par le thème par défaut, sans doublon', () => {
