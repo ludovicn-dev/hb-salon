@@ -2938,6 +2938,11 @@ app.addEventListener('pointerdown', (e) => {
 let swipe = null;
 let swipedAt = 0;
 app.addEventListener('pointerdown', (e) => {
+  // Un second doigt (pincement) annule le geste : seul un balayage à un doigt change de semaine.
+  if (!e.isPrimary) {
+    swipe = null;
+    return;
+  }
   swipe = S.view === 'coiffeur' && S.space === 'agenda' && !S.modal && e.target.closest('.week') ? { x: e.clientX, y: e.clientY, id: e.pointerId } : null;
 });
 app.addEventListener('pointercancel', () => {

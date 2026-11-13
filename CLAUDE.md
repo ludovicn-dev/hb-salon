@@ -30,7 +30,7 @@ PWA en JavaScript simple, sans framework ni étape de build, tout dans [app/](ap
 
 ## Tester
 - `npx http-server -p 8080 -c-1` dans `app/` ; tests (agenda, thèmes) : `node --test "tests/*.test.js"` à la racine.
-- Pas de tablette sous la main : Playwright en 1280×800 et 800×1280, dans un contexte isolé `page.context().browser().newContext({ serviceWorkers: 'block' })` (données à part, et pas d'ancienne version servie par le cache). Minuteurs (2 min client, 10 min coiffeur) : `page.clock.install()`. Clavier Android : réduire la hauteur (~440 px en paysage ; la page déclare `interactive-widget=resizes-content`).
+- Pas de tablette sous la main : Playwright en 1280×800 et 800×1280, dans un contexte isolé `page.context().browser().newContext({ serviceWorkers: 'block' })` (données à part, et pas d'ancienne version servie par le cache). Minuteurs (2 min client, 10 min coiffeur) : `page.clock.install()`. Clavier Android : réduire la hauteur (~440 px en paysage ; la page déclare `interactive-widget=resizes-content`). Geste tactile (balayage…) : la souris ne voit ni `touch-action` ni `pointercancel` ; contexte `hasTouch: true, isMobile: true` et `Input.dispatchTouchEvent` par CDP (`ctx.newCDPSession(page)`), plusieurs `touchMove`.
   - Playwright du MCP : fichiers seulement dans le projet (captures dans `.playwright-mcp/`, ignoré par git), pas de `require`. Premier lancement : l'appli ouvre directement « Nouveau code ».
 - Synchro : avec un compte Supabase de test créé pour l'occasion puis supprimé, jamais celui du coiffeur ; deux contextes isolés = deux tablettes.
 - Revue de design : `/impeccable critique` (rapports dans [.impeccable/critique/](.impeccable/critique/)).

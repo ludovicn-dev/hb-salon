@@ -996,7 +996,9 @@ button.photo:active { border-color: var(--accent); }
 
 .week { flex: 1; min-height: 240px; display: flex; flex-direction: column; gap: 6px; touch-action: pan-y; }
 /* Changement de semaine (balayage ou flèches) : la nouvelle arrive du côté où l'on va. Le défilement vertical
-   reste au navigateur (pan-y), le geste horizontal est à nous (swipeStep). */
+   reste au navigateur (pan-y), le geste horizontal est à nous (swipeStep). Chrome ne remonte touch-action que
+   jusqu'à la zone qui défile : la grille (dans .week-scroll) le redit, sinon il garde le geste et l'annule. */
+.week-body { touch-action: pan-y; }
 .week.slide-next { animation: week-in-next var(--t-week) var(--ease-out); }
 .week.slide-prev { animation: week-in-prev var(--t-week) var(--ease-out); }
 @keyframes week-in-next { from { opacity: 0; transform: translateX(32px); } }
