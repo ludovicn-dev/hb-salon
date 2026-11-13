@@ -1702,14 +1702,38 @@ function loginError(err) {
   return 'Connexion impossible pour l’instant. Réessayez dans quelques minutes.';
 }
 
+// Ce qui ne part jamais en ligne (mêmes règles que sync.js) : fiches sans accord du client, rendez-vous
+// à venir sans fiche acceptée ou gardés après un refus. Leur seule copie est la tablette (et les exports).
+async function tabletOnly() {
+  const [clients, appts] = await Promise.all([db.allClients(), db.allAppointments()]);
+  const ok = new Set(clients.filter((c) => c.consentAt).map((c) => c.id));
+  const nowIso = new Date().toISOString();
+  return {
+    clients: clients.filter((c) => !c.consentAt).length,
+    appts: appts.filter((a) => a.start >= nowIso && (a.localOnly || !ok.has(a.clientId))).length
+  };
+}
+
+// Dans « Sauvegarde » : dit ce qu'une tablette perdue emporterait, et où en garder une copie.
+function viewTabletOnly() {
+  const n = S.tabletOnly;
+  if (!n || (!n.clients && !n.appts)) return '';
+  const parts = [
+    n.clients ? (n.clients > 1 ? `${nb(`${n.clients} fiches`)} sans accord du client` : 'une fiche sans accord du client') : '',
+    n.appts ? (n.appts > 1 ? `${nb(`${n.appts} rendez-vous`)} à venir` : 'un rendez-vous à venir') : ''
+  ].filter(Boolean);
+  return `<p class="sync-local">${icon('info', 18)}<span>Sur cette tablette seulement : ${parts.join(' et ')}. Ils ne partent pas en ligne ; l’export ci-dessous en garde une copie.</span></p>`;
+}
+
 // Export Excel : dans « Sauvegarde » (c'en est une copie) et dans « Réglages », où on le cherche aussi.
 const viewExport = () => `
         <section class="dlg-section" aria-labelledby="sec-export">
           <h3 id="sec-export">Exporter pour Excel</h3>
-          <p class="muted small">Fiches clients et historique, à ouvrir dans Excel. Les fichiers arrivent dans « Téléchargements » ; les photos n’y sont pas.</p>
+          <p class="muted small">Fiches clients, historique et rendez-vous, à ouvrir dans Excel. Les fichiers arrivent dans « Téléchargements » ; les photos n’y sont pas.</p>
           <div class="export-btns">
             <button type="button" class="btn btn-ghost" data-action="export-clients">${icon('download', 18)} Fiches clients</button>
             <button type="button" class="btn btn-ghost" data-action="export-visits">${icon('download', 18)} Historique des visites</button>
+            <button type="button" class="btn btn-ghost" data-action="export-appts">${icon('download', 18)} Rendez-vous</button>
           </div>
         </section>`;
 
@@ -1784,6 +1808,7 @@ function viewModal() {
         <h2 class="serif" id="dlg-title">Sauvegarde</h2>
         <div class="sync-state sync-${v.tone}" id="sync-state" role="status">${syncStateInner(v)}</div>
         ${online}
+        ${st.state === 'off' ? '' : viewTabletOnly()}
         ${viewExport()}
         <div class="form-actions"><button type="button" class="btn btn-ghost" data-action="close-modal">Fermer</button></div>
       </div>`;
@@ -2286,6 +2311,25 @@ async function exportVisits() {
   download(`hb-salon-visites-${stamp()}.csv`, csv(rows));
 }
 
+// L'agenda en entier, dans l'ordre des jours : seule copie des rendez-vous qui ne partent pas en ligne.
+async function exportAppts() {
+  await loadClients();
+  const byId = new Map(S.clients.map((c) => [c.id, c]));
+  const online = sync.getStatus().state !== 'off';
+  const appts = (await db.allAppointments()).sort((a, b) => a.start.localeCompare(b.start));
+  const rows = [['Date', 'Heure', 'Durée', 'Prénom', 'Nom', 'Téléphone', 'Prestations', 'Sauvegardé en ligne']];
+  for (const a of appts) {
+    const c = byId.get(a.clientId);
+    const saved = online && !a.localOnly && Boolean(c?.consentAt);
+    rows.push([
+      new Date(a.start).toLocaleDateString('fr-FR'), fmtTime(a.start), core.fmtDuration(a.duration),
+      c?.firstName || a.firstName, c?.lastName || '', fmtPhone(c?.phone || a.phone), a.services.join(', '),
+      saved ? 'oui' : 'non, tablette seulement'
+    ]);
+  }
+  download(`hb-salon-rendez-vous-${stamp()}.csv`, csv(rows));
+}
+
 // ---------- Formulaires ----------
 
 // Prénom et téléphone obligatoires (nom et e-mail facultatifs) ; `you` : messages adressés au client.
@@ -2422,7 +2466,10 @@ const actions = {
     S.pin = { mode: 'new', entry: '', first: '', error: '', inside: true, next: () => go('coiffeur'), cancel: () => go('coiffeur') };
     go('pin');
   },
-  backup: () => openModal({ type: 'backup' }),
+  backup: async () => {
+    S.tabletOnly = await tabletOnly();
+    openModal({ type: 'backup' });
+  },
   settings: () => openModal({ type: 'settings' }),
   // La fenêtre reste ouverte : on peut en essayer plusieurs de suite.
   'set-theme': (el) => {
@@ -2581,6 +2628,7 @@ const actions = {
   },
   'export-clients': exportClients,
   'export-visits': exportVisits,
+  'export-appts': exportAppts,
   select: async (el) => {
     await selectClient(el.dataset.id);
     render({ top: true });

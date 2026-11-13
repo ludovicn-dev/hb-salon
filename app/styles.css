@@ -877,6 +877,9 @@ button.photo:active { border-color: var(--accent); }
 .sync-actions { display: flex; gap: 12px; flex-wrap: wrap; }
 .sync-account { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; font-size: var(--fs-md); color: var(--text-2); }
 .sync-account strong { font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+/* Ce qui reste sur la tablette seulement : une information, pas une alerte (règle RGPD voulue). */
+.sync-local { display: flex; gap: 10px; align-items: flex-start; font-size: var(--fs-md); color: var(--text-2); line-height: 1.45; }
+.sync-local .ic { flex-shrink: 0; margin-top: 2px; color: var(--muted); }
 /* « non activée » sous le mot, en petit : la barre du haut garde la place de la date. */
 .backup-text { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.2; }
 .backup-off { color: var(--muted); font-size: var(--fs-xs); font-weight: 500; }
