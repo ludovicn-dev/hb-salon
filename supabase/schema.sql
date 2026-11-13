@@ -25,7 +25,7 @@ create table public.visits (
   services text[] not null default '{}',
   formula jsonb not null default '{}',
   note text not null default '',
-  status text not null default 'pending',
+  status text not null default 'pending' check (status in ('pending', 'done')),
   validated_at timestamptz,
   created_at timestamptz not null,
   updated_at timestamptz not null,
@@ -105,7 +105,8 @@ create policy "own rows" on public.appointments for all to authenticated
 create policy "own rows" on public.deletions for all to authenticated
   using (owner = (select auth.uid())) with check (owner = (select auth.uid()));
 
-revoke all on public.clients, public.visits, public.photos, public.appointments, public.deletions from anon;
+-- Supabase donne d'office tous les droits (TRUNCATE compris, qui passe outre la RLS) : on ne garde que les quatre utiles.
+revoke all on public.clients, public.visits, public.photos, public.appointments, public.deletions from anon, authenticated;
 grant select, insert, update, delete on public.clients, public.visits, public.photos, public.appointments, public.deletions to authenticated;
 
 -- Photos : stockage privé, chaque compte dans son dossier.

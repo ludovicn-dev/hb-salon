@@ -24,7 +24,7 @@ PWA en JavaScript simple, sans framework ni étape de build, tout dans [app/](ap
 
 ## En ligne
 - GitHub Pages, publié par `.github/workflows/pages.yml` à chaque push sur `main` : chaque push arrive sur la tablette du coiffeur, tester avant.
-- Supabase : tables et règles d'accès dans [supabase/schema.sql](supabase/schema.sql), à coller dans le SQL Editor (`2026-11-agenda.sql` : migration déjà appliquée chez le coiffeur). Un compte = les données d'un salon, créé à la main (inscriptions fermées). Plan gratuit : pas de sauvegarde automatique, pause après 7 jours sans activité.
+- Supabase : tables et règles d'accès dans [supabase/schema.sql](supabase/schema.sql), à coller dans le SQL Editor (`2026-11-agenda.sql` et `2026-11-droits.sql`, droits au plus juste et statut des visites contrôlé : migrations déjà appliquées chez le coiffeur). Supabase donne d'office tous les droits à `authenticated` sur une nouvelle table : `revoke all` avant le `grant`. Un compte = les données d'un salon, créé à la main (inscriptions fermées). Plan gratuit : pas de sauvegarde automatique, pause après 7 jours sans activité.
 
 ## Tester
 - `npx http-server -p 8080 -c-1` dans `app/` ; calculs de l'agenda : `node --test "tests/*.test.js"` à la racine.
