@@ -249,7 +249,7 @@ const logo = (size = 'sm') => `<span class="logo logo-${size}" role="img" aria-l
 // ---------- Thème ----------
 
 // Pose le thème sur <html> (data-theme) et colore la barre d'Android. Un thème inconnu (retiré depuis) revient
-// au thème par défaut (Élégance) et sort du stockage. Avec save, le choix est gardé : index.html le reprend au lancement.
+// au thème par défaut (Barbier) et sort du stockage. Avec save, le choix est gardé : index.html le reprend au lancement.
 function applyTheme(id, { save = false } = {}) {
   const known = THEMES.some((t) => t.id === id);
   const theme = known ? id : DEFAULT_THEME;
