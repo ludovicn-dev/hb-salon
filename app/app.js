@@ -1410,6 +1410,13 @@ const CONSENT_TAG = '<span class="tag tag-consent">Accord RGPD à demander</span
 const keptText = (n) =>
   !n ? '' : n > 1 ? ` Ses ${n} rendez-vous à venir sont gardés sur la tablette.` : ' Son rendez-vous à venir est gardé sur la tablette.';
 
+// Nombre de visites validées par le client, pour le coiffeur seul (l'écran du client ne l'affiche pas).
+function visitCountLine() {
+  const n = S.history.filter((v) => v.status === 'done').length;
+  const none = S.history.length ? 'Aucune visite validée' : 'Première visite';
+  return `<span>${n ? nb(`${n} visite${n > 1 ? 's' : ''}`) : none}</span>`;
+}
+
 function lastColorLine() {
   const lc = core.lastColor(S.history, new Date());
   return lc ? `<span>Dernière couleur ${nb(core.agoText(lc.days))} (${fmtDayShort(lc.date)})</span>` : '';
@@ -1432,7 +1439,7 @@ function viewClientDetail() {
   if (!meta.length) meta.push('Coordonnées à compléter par le client');
   if (c.consentAt) meta.push(consentLine(c));
   // En-tête ramassé : qui (coordonnées, accord), puis ce qui sert au travail (couleur, rendez-vous).
-  const facts = [lastColorLine(), nextApptLine()].filter(Boolean);
+  const facts = [visitCountLine(), lastColorLine(), nextApptLine()].filter(Boolean);
   // Sortie visible de la fiche (le bouton « Aujourd'hui » du haut fait la même chose, mais rien ne le dit).
   return `
   <button type="button" class="link back-link" data-action="space" data-space="today">${icon('left', 18)} Planning du jour</button>
@@ -1440,7 +1447,7 @@ function viewClientDetail() {
     <div class="client-id">
       <h1 class="serif${fullName(c).length > 28 ? ' is-long' : ''}">${esc(fullName(c))}</h1>
       <p class="client-meta"><span class="dot-list">${meta.map((m) => `<span>${esc(m)}</span>`).join('')}${c.consentAt ? '' : CONSENT_TAG}</span></p>
-      ${facts.length ? `<div class="client-facts">${facts.join('')}</div>` : ''}
+      <div class="client-facts">${facts.join('')}</div>
     </div>
     <button type="button" class="btn btn-ghost" data-action="edit-client">${icon('edit', 18)} Modifier la fiche</button>
   </div>
@@ -2314,13 +2321,20 @@ const consentCsv = (c) => dateFr(c.consentAt);
 async function exportClients() {
   await loadClients();
   const visits = await db.allVisits();
+  // Même règle que la fiche : seules comptent les visites validées par le client.
   const count = new Map();
-  visits.forEach((v) => count.set(v.clientId, (count.get(v.clientId) || 0) + 1));
-  const rows = [['Prénom', 'Nom', 'Téléphone', 'E-mail', 'Allergies / sensibilités', 'Consentement RGPD', 'Fiche créée le', 'Nb visites', 'Dernière visite']];
+  const last = new Map();
+  visits
+    .filter((v) => v.status === 'done')
+    .forEach((v) => {
+      count.set(v.clientId, (count.get(v.clientId) || 0) + 1);
+      if (!last.has(v.clientId) || v.date > last.get(v.clientId)) last.set(v.clientId, v.date);
+    });
+  const rows = [['Prénom', 'Nom', 'Téléphone', 'E-mail', 'Allergies / sensibilités', 'Consentement RGPD', 'Fiche créée le', 'Nb visites validées', 'Dernière visite validée']];
   [...S.clients]
     .sort((a, b) => norm(a.lastName + a.firstName).localeCompare(norm(b.lastName + b.firstName)))
     .forEach((c) =>
-      rows.push([c.firstName, c.lastName, fmtPhone(c.phone), c.email, c.allergies, consentCsv(c), dateFr(c.createdAt), count.get(c.id) || 0, dateFr(S.lastVisit.get(c.id))])
+      rows.push([c.firstName, c.lastName, fmtPhone(c.phone), c.email, c.allergies, consentCsv(c), dateFr(c.createdAt), count.get(c.id) || 0, dateFr(last.get(c.id))])
     );
   download(`hb-salon-clients-${stamp()}.csv`, csv(rows));
 }

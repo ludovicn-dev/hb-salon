@@ -1,7 +1,7 @@
 // Hors-ligne : l'appli est servie depuis le cache de sa version, installé d'un bloc.
 // Changer CACHE à chaque nouvelle version : c'est la seule façon dont la tablette se met à jour.
 
-const CACHE = 'hb-salon-v34';
+const CACHE = 'hb-salon-v35';
 // Réglages gardés d'une version à l'autre : fond du thème choisi, écrit par l'appli (applyTheme).
 const PREFS = 'hb-salon-prefs';
 const FONTS = [
