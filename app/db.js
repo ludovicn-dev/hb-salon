@@ -56,9 +56,22 @@ function open() {
         appts.createIndex('start', 'start');
       }
     };
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      const db = req.result;
+      // Une version plus récente de l'appli, ouverte à côté, change la structure : celle-ci s'efface
+      // en se rechargeant (elle bloquerait sinon la mise à jour, et l'appli resterait figée au lancement).
+      db.onversionchange = () => {
+        db.close();
+        location.reload();
+      };
+      // Base fermée par le navigateur (stockage nettoyé, manque de place) : rouverte au prochain appel.
+      db.onclose = () => (dbPromise = null);
+      resolve(db);
+    };
     req.onerror = () => reject(req.error);
   });
+  // Un échec d'ouverture n'est pas gardé : l'appel suivant réessaie.
+  dbPromise.catch(() => (dbPromise = null));
   return dbPromise;
 }
 
@@ -69,11 +82,23 @@ function promisify(req) {
   });
 }
 
+// Une écriture n'est faite qu'une fois la transaction close : la demande peut réussir puis la transaction
+// être annulée (plus de place sur la tablette : QuotaExceededError, signalé par « abort », pas « error »).
 const done = (tx) =>
   new Promise((resolve, reject) => {
     tx.oncomplete = resolve;
     tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error || new DOMException('Écriture annulée', 'AbortError'));
   });
+
+// Écrit dans un seul magasin et attend que ce soit vraiment enregistré.
+async function write(name, fn) {
+  const db = await open();
+  const tx = db.transaction(name, 'readwrite');
+  const result = await fn(tx.objectStore(name));
+  await done(tx);
+  return result;
+}
 
 async function store(name, mode = 'readonly') {
   const db = await open();
@@ -98,7 +123,7 @@ export async function getSetting(key) {
 }
 
 export async function setSetting(key, value) {
-  await promisify((await store('settings', 'readwrite')).put({ key, value }));
+  await write('settings', (s) => s.put({ key, value }));
 }
 
 // --- Clients ---
@@ -126,7 +151,7 @@ export async function saveClient(client) {
     syncedAt: null,
     dirty: 1
   };
-  await promisify((await store('clients', 'readwrite')).put(record));
+  await write('clients', (s) => s.put(record));
   changed();
   return record;
 }
@@ -193,7 +218,7 @@ export async function saveVisit(visit) {
     syncedAt: null,
     dirty: 1
   };
-  await promisify((await store('visits', 'readwrite')).put(record));
+  await write('visits', (s) => s.put(record));
   changed();
   return record;
 }
@@ -218,7 +243,7 @@ export async function deleteVisit(id, tombstone = true) {
 
 export async function addPhoto(visitId, blob, thumb = null) {
   const record = { id: uid(), visitId, blob, thumb, createdAt: now(), syncedAt: null, dirty: 1 };
-  await promisify((await store('photos', 'readwrite')).put(record));
+  await write('photos', (s) => s.put(record));
   changed();
   return record;
 }
@@ -254,7 +279,9 @@ export async function deletePhoto(id, tombstone = true) {
 const wasSent = (a) => !!(a?.syncedAt || a?.sent);
 
 export async function saveAppointment(appt) {
-  const s = await store('appointments', 'readwrite');
+  const db = await open();
+  const tx = db.transaction('appointments', 'readwrite');
+  const s = tx.objectStore('appointments');
   const id = appt.id || uid();
   const prev = appt.id ? await promisify(s.get(id)) : null;
   const { sent, ...rest } = appt; // seul l'enregistrement en base fait foi (un rendez-vous rétabli a un nouvel identifiant)
@@ -271,7 +298,8 @@ export async function saveAppointment(appt) {
     dirty: 1,
     ...(wasSent(prev) ? { sent: 1 } : {})
   };
-  await promisify(s.put(record));
+  s.put(record);
+  await done(tx);
   changed();
   return record;
 }
@@ -352,17 +380,18 @@ export async function dirty(name) {
 
 // Marque un envoi réussi, sauf si l'enregistrement a été modifié entre-temps (il repartira au prochain tour).
 export async function markSynced(name, id, version, syncedAt) {
-  const s = await store(name, 'readwrite');
-  const cur = await promisify(s.get(id));
-  if (!cur || (cur.updatedAt ?? cur.createdAt) !== version) return;
-  delete cur.dirty;
-  cur.syncedAt = syncedAt;
-  await promisify(s.put(cur));
+  await write(name, async (s) => {
+    const cur = await promisify(s.get(id));
+    if (!cur || (cur.updatedAt ?? cur.createdAt) !== version) return;
+    delete cur.dirty;
+    cur.syncedAt = syncedAt;
+    s.put(cur);
+  });
 }
 
 // Écrit un enregistrement reçu d'en ligne, sans le marquer à renvoyer.
 export async function putRemote(name, record) {
-  await promisify((await store(name, 'readwrite')).put(record));
+  await write(name, (s) => s.put(record));
 }
 
 export async function pendingDeletions() {
@@ -370,5 +399,5 @@ export async function pendingDeletions() {
 }
 
 export async function clearDeletion(id) {
-  await promisify((await store('deletions', 'readwrite')).delete(id));
+  await write('deletions', (s) => s.delete(id));
 }

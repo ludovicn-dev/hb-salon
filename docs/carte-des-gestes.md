@@ -6,99 +6,101 @@ Régénérer les tableaux après un changement d'`app.js`, à la racine : `pytho
 
 <!-- début du bloc généré par tools/carte_gestes.py -->
 
-69 actions, 69 gestes distincts affichés à l'écran, 13 écouteurs.
+70 actions, 70 gestes distincts affichés à l'écran, 14 écouteurs.
 
 ## Actions (`data-action`)
 
 | Geste | Affiché par | Action (ligne) | Appelle | Puis (utilitaires d'affichage omis) |
 |---|---|---|---|---|
-| `unlock` | viewWelcome | L2482 | askPin, go | — |
-| `pin-key` | viewPin | L2483 | pinDigit | pinDigit → hashPin, hashRecovery, startLockTicker, lockMsg |
-| `pin-back` | viewPin | L2484 | render | — |
-| `pin-cancel` | viewPin | L2489 | render | — |
-| `pin-forgot` | viewPin | L2496 | render | — |
-| `lock` | viewCoiffeur | L2500 | parkDraft, go | parkDraft → draftHasContent, isAuto |
-| `change-pin` | viewModal | L2509 | go | — |
-| `backup` | viewCoiffeur | L2513 | tabletOnly, openModal | — |
-| `settings` | viewCoiffeur | L2517 | openModal | — |
-| `set-theme` | viewThemePicker | L2519 | applyTheme, render, announce | — |
-| `toggle-pw` | viewModal | L2525 | icon | — |
-| `sync-now` | viewModal | L2532 | toast | — |
-| `sign-out` | viewModal | L2537 | hideToast, render | — |
-| `cancel-signout` | viewModal | L2542 | render | — |
-| `confirm-signout` | viewModal | L2546 | render, toast | — |
-| `space` | viewClientDetail, viewCoiffeur, viewTodayPlan | L2557 | loadWeek, parkDraft, render, scrollPlanToNow | parkDraft → draftHasContent, isAuto |
-| `slot` | viewDayColumn | L2569 | moveTo, selectorOf, openModal, newApptModal | moveTo → slotIssue, refreshAppts, agendaNote; newApptModal → prefill |
-| `appt` | (module), viewDayColumn | L2574 | selectorOf, render, announce, findAppt, openApptModal | — |
-| `appt-who` | viewApptWho | L2587 | apptFirstName, prefill, render | prefill → apptServices, freeOf |
-| `appt-other` | viewApptWho | L2600 | prefill, render | prefill → apptServices, freeOf |
-| `appt-service` | viewApptDialog | L2612 | prefill, render, announceSpan | prefill → apptServices, freeOf; announceSpan → findAppt, apptSpan |
-| `appt-time` | viewApptDialog | L2623 | atMinutes, render, announceSpan, fmtMin | announceSpan → findAppt, apptSpan |
-| `appt-dur` | viewApptDur | L2634 | render, announceSpan | announceSpan → findAppt, apptSpan |
-| `appt-move` | viewApptDialog | L2644 | findAppt, apptName, fmtDayTitle, fmtTime, render, announce | — |
-| `move-cancel` | (module), viewAgenda | L2654 | render | — |
-| `undo` | cancelAppt, moveTo, viewAgenda, viewTodayPlan | L2658 | undoAgenda | undoAgenda → cancelAppt, slotIssue, agendaNote, refreshAppts |
-| `show-appt` | nextApptLine, viewTodayPlan | L2659 | loadWeek, render | — |
-| `appt-open` | viewApptDialog | L2669 | openApptClient, findAppt | openApptClient → apptClient, selectClient |
-| `today-appt` | viewDayColumn | L2670 | openApptClient, findAppt | openApptClient → apptClient, selectClient |
-| `today-edit` | viewDayColumn | L2671 | findAppt, openApptModal | — |
-| `appt-cancel` | viewApptDialog | L2676 | cancelAppt, findAppt | cancelAppt → refreshAppts, agendaNote |
-| `week-prev` | viewAgenda | L2677 | showWeek, addDays | showWeek → loadWeek |
-| `week-next` | (module), viewAgenda | L2678 | showWeek, addDays | showWeek → loadWeek |
-| `week-now` | viewAgenda | L2679 | showWeek, scrollPlanToNow | showWeek → loadWeek |
-| `export-clients` | viewExport | L2683 | exportClients | exportClients → loadClients, consentCsv, dateFr, download, stamp, csv |
-| `export-visits` | viewExport | L2684 | exportVisits | exportVisits → loadClients, dateFr, consentCsv, download, stamp, csv |
-| `export-appts` | viewExport | L2685 | exportAppts | exportAppts → loadClients, download, stamp, csv |
-| `select` | viewResults | L2686 | selectClient, render | selectClient → parkDraft, dropNotices, restoreDraft, emptyDraft, loadHistory, precheck |
-| `clear-search` | viewCoiffeur | L2691 | viewResults | viewResults → searchClients, hasLetters, capName, hasName, ago |
-| `new-client` | viewCoiffeur | L2698 | openModal | — |
-| `new-client-search` | viewResults | L2700 | hasLetters, openModal, capName, fmtPhone | — |
-| `delete-client` | (module), viewModal | L2709 | openModal, hasName, fullName, draftHasContent, isAuto | — |
-| `keep-client` | viewModal | L2729 | render | — |
-| `confirm-delete-client` | viewModal | L2737 | dropDraft, dropNotices, emptyDraft, loadClients, refreshAppts, hasName, fullName, fmtDayShort, fmtPhone, addNotice, keptText, render | loadClients → isToday; refreshAppts → loadWeek, loadToday, loadNextAppt |
-| `edit-client` | viewClientDetail | L2763 | openModal, fmtPhone | — |
-| `close-modal` | viewApptDialog, viewModal | L2764 | closeModal | — |
-| `tab` | viewClientDetail | L2765 | render | — |
-| `toggle-service` | viewDraft | L2769 | render | — |
-| `reuse-services` | (module), viewDraft | L2783 | render | — |
-| `dismiss-notice` | (module), viewNotices | L2788 | render | — |
-| `rehand-notice` | viewNotices | L2792 | selectClient, dropNotices, handTo, render | selectClient → parkDraft, dropNotices, restoreDraft, emptyDraft, loadHistory, precheck; handTo → parkDraft, nextVisitOf |
-| `back-to-consent` | viewModal | L2800 | render | — |
-| `open-dup` | (module), viewDuplicate | L2805 | linkAppt, selectClient, render | linkAppt → refreshAppts; selectClient → parkDraft, dropNotices, restoreDraft, emptyDraft, loadHistory, precheck |
-| `reuse-formula` | viewDraft | L2813 | render, toast, fmtDayShort | — |
-| `add-photo` | (module), viewDraft | L2818 | — | — |
-| `remove-photo` | viewDraft | L2819 | render | — |
-| `zoom` | hydratePhotos | L2825 | selectorOf, viewLightbox | — |
-| `close-photo` | viewLightbox | L2836 | — | — |
-| `handover` | viewDraft | L2845 | checkServices, handOver | handOver → dropDraft, emptyDraft, handTo |
-| `rehand` | viewDraft, viewHistory | L2854 | endEdit, handTo | endEdit → dropDraft, emptyDraft; handTo → parkDraft, nextVisitOf |
-| `edit-visit` | viewDraft, viewHistory | L2859 | dropDraft, render | — |
-| `cancel-edit` | (module), viewDraft | L2878 | endEdit, render | endEdit → dropDraft, emptyDraft |
-| `save-edit` | viewDraft | L2883 | checkServices, saveEdit | saveEdit → endEdit, loadHistory |
-| `delete-visit` | viewHistory | L2892 | openModal | — |
-| `confirm-delete` | viewModal | L2893 | dropNotices, endEdit, loadHistory, loadClients, render, toast | endEdit → dropDraft, emptyDraft; loadHistory → loadNextAppt; loadClients → isToday |
-| `confirm-no-consent` | viewModal | L2905 | dropDraft, dropNotices, hasName, fullName, fmtDayShort, fmtPhone, addNotice, keptText, finishCheckout | — |
-| `client-to-coiffeur` | viewClient | L2917 | askPin, go | — |
-| `stay` | warnIdle | L2918 | — | — |
-| `welcome` | viewThanks | L2919 | go | — |
+| `unlock` | viewWelcome | L2505 | askPin, go | — |
+| `pin-key` | viewPin | L2506 | pinDigit | pinDigit → hashPin, hashRecovery, startLockTicker, lockMsg |
+| `pin-back` | viewPin | L2507 | render | — |
+| `pin-cancel` | viewPin | L2512 | render | — |
+| `pin-forgot` | viewPin | L2519 | render | — |
+| `lock` | viewCoiffeur | L2523 | parkDraft, go | parkDraft → draftHasContent, isAuto |
+| `change-pin` | viewModal | L2532 | go | — |
+| `backup` | viewCoiffeur | L2536 | tabletOnly, openModal | — |
+| `settings` | viewCoiffeur | L2540 | openModal | — |
+| `set-theme` | viewThemePicker | L2542 | applyTheme, render, announce | — |
+| `toggle-pw` | viewModal | L2548 | icon | — |
+| `sync-now` | viewModal | L2555 | toast | — |
+| `sign-out` | viewModal | L2560 | hideToast, render | — |
+| `cancel-signout` | viewModal | L2565 | render | — |
+| `confirm-signout` | viewModal | L2569 | render, toast | — |
+| `space` | viewClientDetail, viewCoiffeur, viewTodayPlan | L2580 | loadWeek, parkDraft, render, scrollPlanToNow | parkDraft → draftHasContent, isAuto |
+| `slot` | viewDayColumn | L2592 | moveTo, selectorOf, openModal, newApptModal | moveTo → slotIssue, refreshAppts, agendaNote; newApptModal → prefill |
+| `appt` | (module), viewDayColumn | L2597 | selectorOf, render, announce, findAppt, openApptModal | — |
+| `appt-who` | viewApptWho | L2610 | apptFirstName, prefill, render | prefill → apptServices, freeOf |
+| `appt-other` | viewApptWho | L2623 | prefill, render | prefill → apptServices, freeOf |
+| `appt-service` | viewApptDialog | L2635 | prefill, render, announceSpan | prefill → apptServices, freeOf; announceSpan → findAppt, apptSpan |
+| `appt-time` | viewApptDialog | L2646 | atMinutes, render, announceSpan, fmtMin | announceSpan → findAppt, apptSpan |
+| `appt-dur` | viewApptDur | L2657 | render, announceSpan | announceSpan → findAppt, apptSpan |
+| `appt-move` | viewApptDialog | L2667 | findAppt, apptName, fmtDayTitle, fmtTime, render, announce | — |
+| `move-cancel` | (module), viewAgenda | L2677 | render | — |
+| `undo` | cancelAppt, moveTo, viewAgenda, viewTodayPlan | L2681 | undoAgenda | undoAgenda → cancelAppt, slotIssue, agendaNote, refreshAppts |
+| `show-appt` | nextApptLine, viewTodayPlan | L2682 | loadWeek, render | — |
+| `appt-open` | viewApptDialog | L2692 | openApptClient, findAppt | openApptClient → apptClient, selectClient |
+| `today-appt` | viewDayColumn | L2693 | openApptClient, findAppt | openApptClient → apptClient, selectClient |
+| `today-edit` | viewDayColumn | L2694 | findAppt, openApptModal | — |
+| `appt-cancel` | viewApptDialog | L2699 | cancelAppt, findAppt | cancelAppt → refreshAppts, agendaNote |
+| `week-prev` | viewAgenda | L2700 | showWeek, addDays | showWeek → loadWeek |
+| `week-next` | (module), viewAgenda | L2701 | showWeek, addDays | showWeek → loadWeek |
+| `week-now` | viewAgenda | L2702 | showWeek, scrollPlanToNow | showWeek → loadWeek |
+| `export-clients` | viewExport | L2706 | exportClients | exportClients → loadClients, consentCsv, dateFr, download, stamp, csv |
+| `export-visits` | viewExport | L2707 | exportVisits | exportVisits → loadClients, dateFr, consentCsv, download, stamp, csv |
+| `export-appts` | viewExport | L2708 | exportAppts | exportAppts → loadClients, download, stamp, csv |
+| `select` | viewResults | L2709 | selectClient, render | selectClient → parkDraft, dropNotices, restoreDraft, emptyDraft, loadHistory, precheck |
+| `clear-search` | viewCoiffeur | L2714 | viewResults | viewResults → searchClients, hasLetters, capName, hasName, ago |
+| `new-client` | viewCoiffeur | L2721 | openModal | — |
+| `new-client-search` | viewResults | L2723 | hasLetters, openModal, capName, fmtPhone | — |
+| `delete-client` | (module), viewModal | L2732 | openModal, hasName, fullName, draftHasContent, isAuto | — |
+| `keep-client` | viewModal | L2752 | render | — |
+| `confirm-delete-client` | viewModal | L2760 | dropDraft, dropNotices, emptyDraft, loadClients, refreshAppts, hasName, fullName, fmtDayShort, fmtPhone, addNotice, keptText, render | loadClients → isToday; refreshAppts → loadWeek, loadToday, loadNextAppt |
+| `edit-client` | viewClientDetail | L2786 | openModal, fmtPhone | — |
+| `close-modal` | viewApptDialog, viewModal | L2787 | closeModal | — |
+| `tab` | viewClientDetail | L2788 | render | — |
+| `toggle-service` | viewDraft | L2792 | render | — |
+| `reuse-services` | (module), viewDraft | L2806 | render | — |
+| `dismiss-notice` | (module), viewNotices | L2811 | render | — |
+| `rehand-notice` | viewNotices | L2815 | selectClient, dropNotices, handTo, render | selectClient → parkDraft, dropNotices, restoreDraft, emptyDraft, loadHistory, precheck; handTo → parkDraft, nextVisitOf |
+| `back-to-consent` | viewModal | L2823 | render | — |
+| `open-dup` | onSubmit, viewDuplicate | L2828 | linkAppt, selectClient, render | linkAppt → refreshAppts; selectClient → parkDraft, dropNotices, restoreDraft, emptyDraft, loadHistory, precheck |
+| `reuse-formula` | viewDraft | L2836 | render, toast, fmtDayShort | — |
+| `add-photo` | (module), viewDraft | L2841 | — | — |
+| `remove-photo` | viewDraft | L2842 | render | — |
+| `zoom` | hydratePhotos | L2848 | selectorOf, viewLightbox | — |
+| `close-photo` | viewLightbox | L2859 | — | — |
+| `handover` | viewDraft | L2868 | checkServices, handOver | handOver → dropDraft, emptyDraft, handTo |
+| `rehand` | viewDraft, viewHistory | L2877 | endEdit, handTo | endEdit → dropDraft, emptyDraft; handTo → parkDraft, nextVisitOf |
+| `edit-visit` | viewDraft, viewHistory | L2882 | dropDraft, render | — |
+| `cancel-edit` | (module), viewDraft | L2901 | endEdit, render | endEdit → dropDraft, emptyDraft |
+| `save-edit` | viewDraft | L2906 | checkServices, saveEdit | saveEdit → endEdit, loadHistory |
+| `delete-visit` | viewHistory | L2915 | openModal | — |
+| `confirm-delete` | viewModal | L2916 | dropNotices, endEdit, loadHistory, loadClients, render, toast | endEdit → dropDraft, emptyDraft; loadHistory → loadNextAppt; loadClients → isToday |
+| `confirm-no-consent` | viewModal | L2928 | dropDraft, dropNotices, hasName, fullName, fmtDayShort, fmtPhone, addNotice, keptText, finishCheckout | — |
+| `client-to-coiffeur` | viewClient | L2941 | askPin, go | — |
+| `stay` | warnIdle | L2942 | — | — |
+| `welcome` | viewThanks | L2943 | go | — |
+| `reload` | (module), viewBootFailure | L2944 | — | — |
 
 ## Écouteurs du module
 
 | Ligne | Cible | Évènement | Appelle |
 |---|---|---|---|
-| L2923 | `app` | `click` | — |
-| L2945 | `app` | `pointerdown` | — |
-| L2953 | `app` | `pointerdown` | — |
-| L2961 | `app` | `pointercancel` | — |
-| L2964 | `app` | `pointerup` | showWeek, addDays |
-| L2976 | `app` | `focusout` | hasLetters, fmtPhone, bindCheckout, checkFieldOnLeave |
-| L3011 | `app` | `input` | viewResults, markWho, phoneMatches, norm, prefill, viewApptDur, viewApptSpan, viewApptWho, rovingInit, announceMatches, saveDraftsSoon, bindCheckout |
-| L3055 | `app` | `change` | bindCheckout, render, readPhoto, announce, toast |
-| L3075 | `app` | `submit` | saveApptForm, validateContact, showErrors, findDuplicates, viewDuplicate, capName, loadClients, linkAppt, selectClient, render, toast, loginError, openModal, dropNotices, finishCheckout |
-| L3197 | `document` | `pointerdown`, `keydown`, `input` (boucle) | bumpIdle |
-| L3237 | `app` | `focusin` | rovingItems |
-| L3276 | `document` | `keydown` | closeModal, go, trapTab, render, rove, pinDigit |
-| L3310 | `window` | `popstate` | closeModal |
+| L2948 | `app` | `click` | reportFailure |
+| L2975 | `app` | `pointerdown` | — |
+| L2983 | `app` | `pointerdown` | — |
+| L2991 | `app` | `pointercancel` | — |
+| L2994 | `app` | `pointerup` | showWeek, addDays |
+| L3006 | `app` | `focusout` | hasLetters, fmtPhone, bindCheckout, checkFieldOnLeave |
+| L3041 | `app` | `input` | viewResults, markWho, phoneMatches, norm, prefill, viewApptDur, viewApptSpan, viewApptWho, rovingInit, announceMatches, saveDraftsSoon, bindCheckout |
+| L3085 | `app` | `change` | bindCheckout, render, readPhoto, announce, toast |
+| L3105 | `app` | `submit` | onSubmit, reportFailure |
+| L3241 | `document` | `pointerdown`, `keydown`, `input` (boucle) | bumpIdle |
+| L3281 | `app` | `focusin` | rovingItems |
+| L3320 | `document` | `keydown` | closeModal, go, trapTab, render, rove, pinDigit |
+| L3354 | `window` | `popstate` | closeModal |
+| L3463 | `window` | `unhandledrejection` | reportFailure |
 
 ## Contrôles
 

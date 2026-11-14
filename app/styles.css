@@ -89,6 +89,9 @@
 /* Pas de sélection de texte au toucher, sauf dans les champs : sur Android, Chrome ouvrait sinon
    « Toucher pour rechercher » (volet Google en bas) sur un libellé ou un texte touché. */
 body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+/* Un mot plus long que sa place (adresse e-mail, nom collé, note tapée sans espace) passe à la ligne
+   au lieu de déborder sur le bouton voisin ou d'élargir la page. */
+body { overflow-wrap: break-word; }
 input, textarea { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
 
 html, body {
@@ -496,7 +499,7 @@ h2.label { font-weight: 400; }
   border: 1.5px solid var(--error);
   color: var(--error);
 }
-.allergy div { display: flex; flex-direction: column; gap: 4px; }
+.allergy div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .allergy strong { font-size: var(--fs-xs); letter-spacing: 1.2px; text-transform: uppercase; }
 .allergy span { color: var(--text); font-size: var(--fs-lg); font-weight: 600; }
 /* Rappel compact dans la carte « Formule couleur ». */
@@ -747,6 +750,9 @@ button.photo:active { border-color: var(--accent); }
   z-index: 20;
 }
 .toast.on { opacity: 1; transform: none; }
+/* Échec : cerné de corail, comme les autres erreurs ; le texte reste clair pour être lu jusqu'au bout. */
+.toast { border: 1px solid transparent; }
+.toast.toast-error { border-color: var(--error); font-weight: 500; line-height: 1.4; }
 #app[data-modal]:not([data-modal='']) ~ .toast { left: 50%; bottom: calc(32px + var(--safe-bottom)); max-width: min(420px, calc(100% - 40px)); transform: translate(-50%, 16px); }
 #app[data-modal]:not([data-modal='']) ~ .toast.on { transform: translate(-50%, 0); }
 @media (prefers-reduced-motion: reduce) {

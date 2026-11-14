@@ -11,6 +11,10 @@ const KEY = 'sb_publishable_rJvG2uZM3sep2txSuyfRjw_6sLGLDcr';
 const DEBOUNCE_MS = 5000;
 const EVERY_MS = 5 * 60 * 1000;
 const PAGE = 500;
+// Réseau du salon qui ne répond plus (portail Wi-Fi, 4G faible) : un appel sans réponse est abandonné,
+// sinon la sauvegarde restait « en cours » pour toujours et plus aucun tour ne partait. Plus long pour une photo.
+const TIMEOUT_MS = 30 * 1000;
+const PHOTO_TIMEOUT_MS = 90 * 1000;
 
 // state : 'off' (pas connecté) | 'idle' | 'syncing' | 'offline' | 'error' | 'auth' (à reconnecter)
 // failures : échecs d'affilée (pour signaler une panne qui dure).
@@ -40,11 +44,21 @@ export class NetworkError extends Error {}
 // Déconnexion de la sauvegarde pendant une synchro : le tour s'arrête sans changer l'état affiché.
 class SignedOut extends Error {}
 
-async function net(url, opts) {
+async function net(url, opts, timeout = TIMEOUT_MS) {
   try {
-    return await fetch(url, opts);
+    return await fetch(url, { ...opts, signal: AbortSignal.timeout(timeout) });
   } catch (err) {
     throw Object.assign(new NetworkError(err.message), { cause: err });
+  }
+}
+
+// Corps de la réponse lu sous le même délai : un abandon en pleine lecture compte comme une coupure du réseau.
+async function readBody(read) {
+  try {
+    return await read();
+  } catch (err) {
+    if (err?.name === 'TimeoutError' || err?.name === 'AbortError') throw Object.assign(new NetworkError(err.message), { cause: err });
+    throw err;
   }
 }
 
@@ -132,14 +146,20 @@ async function api(path, { method = 'GET', body, headers = {}, raw = false } = {
       ...headers
     },
     body: body instanceof Blob ? body : body ? JSON.stringify(body) : undefined
-  });
+  }, raw || body instanceof Blob ? PHOTO_TIMEOUT_MS : TIMEOUT_MS);
   if (res.status === 401 && !retried) {
     await refresh();
     return api(path, { method, body, headers, raw }, true);
   }
   if (!res.ok) throw new HttpError(res.status, await res.json().catch(() => ({})));
   if (raw) return res;
-  return res.status === 204 ? null : res.json().catch(() => null);
+  if (res.status === 204) return null;
+  const text = await readBody(() => res.text());
+  try {
+    return text ? JSON.parse(text) : null;
+  } catch {
+    return null;
+  }
 }
 
 const rest = (table, query = '', opts) => api(`/rest/v1/${table}${query}`, opts);
@@ -348,7 +368,8 @@ const applyRecord = (table) => async (r) => {
 
 async function download(path) {
   try {
-    return await (await api(`/storage/v1/object/authenticated/photos/${path}`, { raw: true })).blob();
+    const res = await api(`/storage/v1/object/authenticated/photos/${path}`, { raw: true });
+    return await readBody(() => res.blob());
   } catch (err) {
     if (err instanceof HttpError && (err.status === 400 || err.status === 404)) return null;
     throw err;

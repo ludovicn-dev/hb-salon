@@ -191,12 +191,29 @@ function hideToast() {
   toastTimer = setTimeout(() => (el.textContent = ''), 300);
 }
 
-function toast(message) {
+// Un échec reste plus longtemps, en corail, le temps de lire ce qu'il faut faire.
+function toast(message, { error = false } = {}) {
   const el = document.getElementById('toast');
   el.textContent = message;
+  el.classList.toggle('toast-error', error);
   el.classList.add('on');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(hideToast, 3200);
+  toastTimer = setTimeout(hideToast, error ? 9000 : 3200);
+}
+
+// Action qui échoue (le plus souvent une écriture sur la tablette : plus de place, stockage indisponible).
+// L'écran ne change qu'après l'écriture : la saisie est toujours là, on le dit et on rend la main.
+function failMessage(err) {
+  if (S.view === 'client' || S.view === 'thanks') return 'L’enregistrement n’a pas abouti. Touchez à nouveau « Valider », ou rendez la tablette au coiffeur.';
+  if (err?.name === 'QuotaExceededError') return 'La tablette n’a plus de place : rien n’a été enregistré, la saisie est gardée. Libérez de l’espace (photos, vidéos, applis), puis réessayez.';
+  return 'Cette action n’a pas abouti, la saisie est gardée. Réessayez ; si ça recommence, fermez l’appli et rouvrez-la.';
+}
+
+function reportFailure(err, el = null) {
+  console.error(err);
+  // Le bouton désactivé le temps de l'action (confirmer, supprimer…) redevient utilisable.
+  if (el?.isConnected) el.disabled = false;
+  toast(failMessage(err), { error: true });
 }
 
 // Sélecteur stable d'un élément, pour lui rendre le focus après un nouveau rendu.
@@ -292,9 +309,14 @@ function viewThemePicker() {
         </section>`;
 }
 
+// Longueurs maximales des champs : larges pour un vrai nom, une adresse ou une note, mais un collage
+// accidentel (un texte entier, une liste) ne peut plus casser l'affichage de la fiche ni la synchro.
+const MAX_LEN = { firstName: 60, lastName: 80, phone: 24, email: 120, password: 200, allergies: 600, note: 2000, formula: 80 };
+const maxLen = (name) => (MAX_LEN[name] ? ` maxlength="${MAX_LEN[name]}"` : '');
+
 // Champ de formulaire avec emplacement pour son message d'erreur.
 const inputField = (cls, name, label, type, value, extra = '') =>
-  `<label class="${cls}">${label}<input name="${name}" type="${type}" value="${esc(value)}" aria-describedby="err-${name}" ${extra}><span class="field-err" id="err-${name}" aria-hidden="true"></span></label>`;
+  `<label class="${cls}">${label}<input name="${name}" type="${type}" value="${esc(value)}" aria-describedby="err-${name}"${maxLen(name)} ${extra}><span class="field-err" id="err-${name}" aria-hidden="true"></span></label>`;
 
 // ---------- Navigation ----------
 
@@ -531,7 +553,7 @@ function viewCoiffeur() {
         <label for="search" class="label">Client</label>
         <div class="search">
           ${icon('search', 18)}
-          <input id="search" type="search" data-search placeholder="Nom ou téléphone…" value="${esc(S.query)}" autocomplete="off">
+          <input id="search" type="search" data-search maxlength="80" placeholder="Nom ou téléphone…" value="${esc(S.query)}" autocomplete="off">
           <button type="button" class="search-clear" data-action="clear-search" aria-label="Effacer la recherche">${icon('x', 18)}</button>
         </div>
         <div id="results" class="results">${viewResults()}</div>
@@ -726,10 +748,10 @@ function viewApptDialog(m) {
       ${c?.allergies ? `<div class="allergy allergy-mini">${icon('alert', 18)}<p><strong>Allergies</strong> <span>${esc(c.allergies)}</span></p></div>` : ''}`
     : `<div class="appt-ident">
         <label class="field">Téléphone
-          <input name="apptQuery" type="tel" inputmode="tel" value="${esc(m.query)}" autocomplete="off" aria-describedby="appt-who-err"${m.whoField === 'apptQuery' ? ' aria-invalid="true"' : ''} data-autofocus>
+          <input name="apptQuery" type="tel" inputmode="tel" value="${esc(m.query)}"${maxLen('phone')} autocomplete="off" aria-describedby="appt-who-err"${m.whoField === 'apptQuery' ? ' aria-invalid="true"' : ''} data-autofocus>
         </label>
         <label class="field">Prénom
-          <input name="apptFirst" type="text" value="${esc(apptFirstName(m))}" autocomplete="off" autocapitalize="words" aria-describedby="appt-who-err"${m.whoField === 'apptFirst' ? ' aria-invalid="true"' : ''}>
+          <input name="apptFirst" type="text" value="${esc(apptFirstName(m))}"${maxLen('firstName')} autocomplete="off" autocapitalize="words" aria-describedby="appt-who-err"${m.whoField === 'apptFirst' ? ' aria-invalid="true"' : ''}>
         </label>
       </div>
       <p class="err err-inline" id="appt-who-err" role="alert">${esc(m.whoError)}</p>
@@ -1483,7 +1505,7 @@ function viewDraft() {
   const stale = waiting && !isToday(waiting.date);
   const doneToday = d.editId || waiting ? null : S.history.find((v) => v.status === 'done' && isToday(v.date));
   const field = (key, label, ph) =>
-    `<label class="field">${label}<input data-bind="formula.${key}" value="${esc(f[key])}" placeholder="${ph}" autocomplete="off"></label>`;
+    `<label class="field">${label}<input data-bind="formula.${key}" value="${esc(f[key])}" placeholder="${ph}"${maxLen('formula')} autocomplete="off"></label>`;
   return `
   <div class="draft">
     ${
@@ -1537,7 +1559,7 @@ function viewDraft() {
         : ''
     }
     <label class="field">Note interne (le client ne la voit pas)
-      <textarea data-bind="note" rows="2" autocomplete="off" placeholder="ex. Préfère une frange courte">${esc(d.note)}</textarea>
+      <textarea data-bind="note" rows="2"${maxLen('note')} autocomplete="off" placeholder="ex. Préfère une frange courte">${esc(d.note)}</textarea>
     </label>
     <section class="photos">
       <h2 class="label" tabindex="-1">Photos (${d.photos.length}/${MAX_PHOTOS})</h2>
@@ -1785,7 +1807,7 @@ function viewModal() {
           ${input('email', 'E-mail (facultatif)', 'email', 'inputmode="email" autocomplete="off"')}
         </div>
         <label class="field">Allergies / sensibilités
-          <textarea name="allergies" rows="2" autocomplete="off" placeholder="ex. Réaction à la PPD, cuir chevelu sensible">${esc(c.allergies)}</textarea>
+          <textarea name="allergies" rows="2"${maxLen('allergies')} autocomplete="off" placeholder="ex. Réaction à la PPD, cuir chevelu sensible">${esc(c.allergies)}</textarea>
         </label>
         ${c.id ? '' : '<p class="muted small">Le prénom et le téléphone suffisent : le client complètera le reste lui-même.</p>'}
         <div class="dup-slot"></div>
@@ -1826,7 +1848,7 @@ function viewModal() {
             <div class="field">
               <label for="login-password">Mot de passe</label>
               <span class="pw-field">
-                <input id="login-password" name="password" type="password" value="" aria-describedby="err-password" autocomplete="current-password"${st.email ? ' data-autofocus' : ''}>
+                <input id="login-password" name="password" type="password" value=""${maxLen('password')} aria-describedby="err-password" autocomplete="current-password"${st.email ? ' data-autofocus' : ''}>
                 <button type="button" class="pw-toggle" data-action="toggle-pw" aria-pressed="false" aria-label="Afficher le mot de passe">${icon('eye', 20)}</button>
               </span>
               <span class="field-err" id="err-password" aria-hidden="true"></span>
@@ -2469,7 +2491,8 @@ async function saveEdit() {
   const visit = await db.getVisit(d.editId);
   await db.saveVisit({ ...visit, services: SERVICES.filter((s) => d.services.has(s)), formula: { ...d.formula }, note: d.note.trim() });
   for (const id of d.removed) await db.deletePhoto(id);
-  for (const p of d.photos) if (!p.id) await db.addPhoto(visit.id, p.blob, p.thumb);
+  // Chaque photo enregistrée prend son identifiant : après un échec, un nouvel appui n'ajoute pas de doublon.
+  for (const p of d.photos) if (!p.id) p.id = (await db.addPhoto(visit.id, p.blob, p.thumb)).id;
   S.photoCache.delete(visit.id);
   endEdit();
   await loadHistory();
@@ -2903,6 +2926,7 @@ const actions = {
     toast('Visite supprimée');
   },
   'confirm-no-consent': async () => {
+    if (!S.handedVisit) return; // second appui : la fiche est déjà effacée
     const client = await db.getClient(S.handedVisit.clientId);
     const kept = await db.detachAppointments(client.id, new Date().toISOString()); // rendez-vous à venir gardés sur la tablette
     await db.deleteClient(client.id);
@@ -2916,7 +2940,8 @@ const actions = {
   },
   'client-to-coiffeur': () => askPin(enterCoiffeur, () => go('client')),
   stay: () => {},
-  welcome: () => go('welcome')
+  welcome: () => go('welcome'),
+  reload: () => location.reload() // écran « L'appli n'a pas pu démarrer »
 };
 
 const KEEP_NOTE = new Set(['undo', 'space', 'week-prev', 'week-next', 'week-now', 'slot', 'appt', 'close-modal']);
@@ -2932,7 +2957,12 @@ app.addEventListener('click', (e) => {
   // une simple confirmation, elle, ne suit pas ailleurs.
   if (S.note && !(el.dataset.action === 'undo' || (S.note.undo && (S.modal || KEEP_NOTE.has(el.dataset.action))))) S.note = null;
   const fn = actions[el.dataset.action];
-  if (fn) fn(el, e);
+  if (!fn) return;
+  try {
+    Promise.resolve(fn(el, e)).catch((err) => reportFailure(err, el));
+  } catch (err) {
+    reportFailure(err, el);
+  }
 });
 
 function bindCheckout(el) {
@@ -3072,9 +3102,12 @@ app.addEventListener('change', async (e) => {
   (app.querySelector('[data-action="add-photo"]') || [...app.querySelectorAll('.photo-del')].pop())?.focus({ preventScroll: true });
 });
 
-app.addEventListener('submit', async (e) => {
+app.addEventListener('submit', (e) => {
   e.preventDefault();
-  const form = e.target;
+  onSubmit(e.target).catch((err) => reportFailure(err, e.target.querySelector('[type="submit"]')));
+});
+
+async function onSubmit(form) {
   const data = Object.fromEntries(new FormData(form));
   const val = (k) => String(data[k] ?? '').trim();
 
@@ -3149,36 +3182,47 @@ app.addEventListener('submit', async (e) => {
     }
   }
 
+  // Double appui sur « Valider » : le second attend la fin du premier, puis ne trouve plus de visite à valider.
   if (form.dataset.form === 'checkout') {
-    // Sans accord RGPD, rien n'est conservé (après confirmation) : inutile d'exiger le nom.
-    if (!data.consent) {
-      showErrors(form, {});
-      const visits = (await db.visitsOf(S.handedVisit.clientId)).length;
-      const nowIso = new Date().toISOString();
-      const upcoming = (await db.appointmentsOf(S.handedVisit.clientId)).filter((a) => a.start >= nowIso).length;
-      openModal({ type: 'no-consent', visits, upcoming });
-      return;
+    if (!S.handedVisit || !S.checkout || S.checkout.saving) return;
+    S.checkout.saving = true;
+    try {
+      await submitCheckout(form, data, val);
+    } finally {
+      if (S.checkout) S.checkout.saving = false;
     }
-    if (showErrors(form, validateContact(val, true))) return;
-    const stampNow = new Date().toISOString();
-    const client = await db.getClient(S.handedVisit.clientId);
-    const firstName = capName(val('firstName'));
-    const lastName = capName(val('lastName'));
-    await db.saveClient({
-      ...client,
-      firstName,
-      lastName,
-      phone: val('phone'),
-      email: val('email'),
-      consentAt: client.consentAt || stampNow
-    });
-    const visit = await db.getVisit(S.handedVisit.id);
-    await db.saveVisit({ ...visit, status: 'done', validatedAt: stampNow });
-    dropNotices((n) => n.visitId === visit.id);
-    S.validated = { name: [firstName, lastName].filter(Boolean).join(' '), at: stampNow };
-    finishCheckout(firstName, 'Votre fiche est enregistrée.');
   }
-});
+}
+
+async function submitCheckout(form, data, val) {
+  // Sans accord RGPD, rien n'est conservé (après confirmation) : inutile d'exiger le nom.
+  if (!data.consent) {
+    showErrors(form, {});
+    const visits = (await db.visitsOf(S.handedVisit.clientId)).length;
+    const nowIso = new Date().toISOString();
+    const upcoming = (await db.appointmentsOf(S.handedVisit.clientId)).filter((a) => a.start >= nowIso).length;
+    openModal({ type: 'no-consent', visits, upcoming });
+    return;
+  }
+  if (showErrors(form, validateContact(val, true))) return;
+  const stampNow = new Date().toISOString();
+  const client = await db.getClient(S.handedVisit.clientId);
+  const firstName = capName(val('firstName'));
+  const lastName = capName(val('lastName'));
+  await db.saveClient({
+    ...client,
+    firstName,
+    lastName,
+    phone: val('phone'),
+    email: val('email'),
+    consentAt: client.consentAt || stampNow
+  });
+  const visit = await db.getVisit(S.handedVisit.id);
+  await db.saveVisit({ ...visit, status: 'done', validatedAt: stampNow });
+  dropNotices((n) => n.visitId === visit.id);
+  S.validated = { name: [firstName, lastName].filter(Boolean).join(' '), at: stampNow };
+  finishCheckout(firstName, 'Votre fiche est enregistrée.');
+}
 
 function finishCheckout(firstName, note) {
   S.thanksName = firstName;
@@ -3415,13 +3459,41 @@ function purgePastLocalOnly() {
 
 // ---------- Démarrage ----------
 
+// Filet : une promesse rejetée que rien n'a prise (écriture lancée sans l'attendre) est dite, pas tue.
+window.addEventListener('unhandledrejection', (e) => reportFailure(e.reason));
+
+// Stockage de la tablette injoignable au lancement : un écran qui le dit et de quoi relancer,
+// plutôt que « Bienvenue » figé sans bouton.
+function viewBootFailure() {
+  return `
+  <main class="welcome">
+    ${logo('xl')}
+    <div class="thanks-text">
+      <h1 class="serif">L’appli n’a pas pu démarrer</h1>
+      <p>Le stockage de la tablette ne répond pas. Touchez « Relancer » ; si ça recommence, redémarrez la tablette.</p>
+      <p class="muted">N’effacez pas les données de Chrome : les fiches y sont gardées.</p>
+    </div>
+    <button type="button" class="btn btn-accent btn-lg" data-action="reload">Relancer</button>
+  </main>`;
+}
+
 (async function boot() {
+  try {
+    await start();
+  } catch (err) {
+    console.error(err);
+    app.innerHTML = viewBootFailure();
+    app.querySelector('[data-action="reload"]').focus();
+  }
+})();
+
+async function start() {
   applyTheme(document.documentElement.dataset.theme);
-  if (navigator.storage?.persist) navigator.storage.persist();
+  if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
   await purgePastLocalOnly();
   await loadSavedDrafts();
   sync.start(onPulled);
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch((err) => console.warn('Hors-ligne indisponible :', err));
   tickClock();
   const pinLock = await db.getSetting('pinLock');
   if (pinLock) {
@@ -3444,4 +3516,4 @@ function purgePastLocalOnly() {
     };
     go('pin');
   }
-})();
+}
