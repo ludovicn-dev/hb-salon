@@ -446,6 +446,7 @@ function render({ top = false, focus = null } = {}) {
   hydratePhotos();
   // Titres focalisables par script : à l'arrivée sur un écran, le focus va au titre.
   app.querySelectorAll('h1').forEach((h) => (h.tabIndex = -1));
+  rovingInit(app);
   const wanted = focus || active;
   const target =
     (arriving && !focus ? app.querySelector('[data-autofocus]') : null) ||
@@ -517,7 +518,7 @@ function viewCoiffeur() {
       </div>
       <p class="today"><span class="today-date"><span class="date-long">${fmtToday()}</span><span class="date-short">${fmtTodayShort()}</span></span><span class="clock" id="clock">${fmtClock()}</span></p>
       <div class="top-actions">
-        <button type="button" class="${backupClass()}" data-action="backup" id="backup-btn">${backupLabel()}</button>
+        <button type="button" class="${backupClass()}" data-action="backup" id="backup-btn" title="Sauvegarde">${backupLabel()}</button>
         <button type="button" class="btn btn-ghost btn-icon" data-action="settings" aria-label="Réglages" title="Réglages">${icon('gear', 22)}</button>
         <button type="button" class="btn btn-ghost lock-btn" data-action="lock" title="Verrouiller">${icon('lock', 18)}<span class="lock-label"> Verrouiller</span></button>
       </div>
@@ -1722,8 +1723,8 @@ function backupLabel(st = sync.getStatus()) {
   const hint = { error: 'à vérifier', wait: 'envoi en attente' }[a];
   const off = st.state === 'off';
   const ic = a === 'error' || off ? 'cloudOff' : a === 'wait' ? 'clock' : 'cloud';
-  if (off) return `${icon(ic, 18)}<span class="backup-text">Sauvegarde<span class="backup-off"> non activée</span></span>`;
-  return `${icon(ic, 18)} Sauvegarde${hint ? `<span class="sr-only"> : ${hint}</span>` : ''}`;
+  if (off) return `${icon(ic, 18)}<span class="backup-text backup-words">Sauvegarde<span class="backup-off"> non activée</span></span>`;
+  return `${icon(ic, 18)}<span class="backup-words"> Sauvegarde${hint ? `<span class="sr-only"> : ${hint}</span>` : ''}</span>`;
 }
 
 function loginError(err) {
@@ -3032,6 +3033,7 @@ app.addEventListener('input', (e) => {
       app.querySelector('#appt-span').outerHTML = viewApptSpan(m);
     }
     app.querySelector('#appt-who').innerHTML = viewApptWho(m);
+    rovingInit(app.querySelector('#appt-who'));
     app.querySelector('#appt-err').textContent = '';
     app.querySelector('#appt-who-err').textContent = '';
     if (el.name === 'apptQuery') announceMatches(m);
@@ -3197,7 +3199,7 @@ for (const type of ['pointerdown', 'keydown', 'input']) {
 
 // Tab reste dans la fenêtre ouverte : on boucle du dernier élément au premier.
 function trapTab(e) {
-  const items = [...app.querySelectorAll('.overlay button, .overlay input, .overlay textarea')].filter((el) => !el.disabled && !el.hidden);
+  const items = [...app.querySelectorAll('.overlay button, .overlay input, .overlay textarea')].filter((el) => !el.disabled && !el.hidden && el.tabIndex >= 0);
   if (!items.length) return;
   const first = items[0];
   const last = items[items.length - 1];
@@ -3211,6 +3213,65 @@ function trapTab(e) {
 }
 
 const TAB_KEYS = { ArrowLeft: 'toggle', ArrowRight: 'toggle', Home: 'visit', End: 'history' };
+
+// Groupes de choix (thèmes, fiches à un numéro) et colonnes de l'agenda : un seul arrêt Tab chacun, puis
+// les flèches (modèle ARIA). Sans cela, une semaine demande une centaine d'appuis sur Tab pour la traverser.
+const ROVING = '[role=radiogroup], .day-col';
+const ROVE_KEYS = { ArrowUp: -1, ArrowLeft: -1, ArrowDown: 1, ArrowRight: 1, Home: 'first', End: 'last' };
+const rovingItems = (g) => [...g.querySelectorAll(g.matches('.day-col') ? 'button' : '[role=radio]')].filter((b) => !b.disabled);
+
+// L'arrêt de chaque groupe : l'élément qui a le focus, sinon le choix coché (ou le prochain rendez-vous), sinon le premier.
+function rovingInit(root) {
+  if (!root) return;
+  const groups = [...(root.matches?.(ROVING) ? [root] : []), ...root.querySelectorAll(ROVING)];
+  for (const g of groups) {
+    const items = rovingItems(g);
+    const stop =
+      items.find((b) => b === document.activeElement) ||
+      items.find((b) => b.getAttribute('aria-checked') === 'true' || b.classList.contains('next')) ||
+      items[0];
+    items.forEach((b) => (b.tabIndex = b === stop ? 0 : -1));
+  }
+}
+
+app.addEventListener('focusin', (e) => {
+  const g = e.target.closest?.(ROVING);
+  const items = g ? rovingItems(g) : [];
+  if (items.includes(e.target)) items.forEach((b) => (b.tabIndex = b === e.target ? 0 : -1));
+});
+
+// Choix : les flèches font le tour du groupe et cochent (la sélection suit le focus).
+// Agenda : haut et bas dans la journée, gauche et droite vers la même heure du jour voisin, sans rien ouvrir.
+function rove(e) {
+  const el = e.target;
+  const g = el.closest(ROVING);
+  const items = rovingItems(g);
+  if (!items.includes(el)) return false;
+  e.preventDefault();
+  const step = ROVE_KEYS[e.key];
+  const day = g.matches('.day-col');
+  let to;
+  if (day && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+    const cols = [...app.querySelectorAll('.day-col')];
+    const next = cols[cols.indexOf(g) + step];
+    const y = el.getBoundingClientRect().top;
+    const gap = (b) => Math.abs(b.getBoundingClientRect().top - y);
+    to = next && rovingItems(next).reduce((best, b) => (!best || gap(b) < gap(best) ? b : best), null);
+  } else {
+    const i = items.indexOf(el);
+    const n = items.length;
+    to = step === 'first' ? items[0] : step === 'last' ? items[n - 1] : day ? items[i + step] : items[(i + step + n) % n];
+  }
+  if (!to || to === el) return true;
+  to.focus();
+  if (to.getAttribute('role') === 'radio' && to.getAttribute('aria-checked') !== 'true') {
+    const sel = selectorOf(to);
+    to.click();
+    // Un choix qui ouvre un champ (« Autre personne ») y porterait le focus : il reste sur le groupe.
+    if (sel && !document.activeElement?.matches(sel)) app.querySelector(sel)?.focus();
+  }
+  return true;
+}
 
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
@@ -3238,6 +3299,7 @@ document.addEventListener('keydown', (e) => {
     render({ top: true, focus: `#tab-${S.tab}` });
     return;
   }
+  if (ROVE_KEYS[e.key] && !e.altKey && !e.ctrlKey && !e.metaKey && e.target.closest?.(ROVING) && rove(e)) return;
   if (S.view !== 'pin') return;
   if (/^\d$/.test(e.key)) pinDigit(e.key);
   else if (e.key === 'Backspace') actions['pin-back']();

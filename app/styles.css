@@ -1111,6 +1111,16 @@ button.photo:active { border-color: var(--accent); }
   .today { min-width: max-content; } /* l'heure garde son écart avec « Sauvegarde » */
   .lock-btn { padding-inline: 12px; min-width: 48px; justify-content: center; }
   .lock-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
+/* Sous 800 px (zoom, grand texte), « Sauvegarde » ne garde que son icône, comme le cadenas : son nom et son
+   état restent au lecteur d'écran. Sous 700 px, Aujourd’hui / Agenda gardent leur nom sans icône.
+   La barre du haut tient ainsi sur une ligne jusqu'à 625 px, soit une tablette paysage zoomée à 200 %. */
+@media (max-width: 799px) {
+  #backup-btn { padding-inline: 12px; min-width: 48px; justify-content: center; }
+  .backup-words { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
+@media (max-width: 700px) {
+  .space-btn .ic { display: none; }
   .draft-foot { flex-wrap: wrap; }
   .foot-note { flex-basis: 100%; }
   .agenda { padding: 12px 16px 16px; }
