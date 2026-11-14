@@ -32,6 +32,7 @@
   --logo-2: #94553a;
   --welcome-bg: radial-gradient(ellipse 55% 60% at 50% 42%, #fffaf6 0%, #f8f1ec 50%, #efe5df 100%);
   color-scheme: light;
+  --week-today: var(--panel); /* colonne du jour de l'agenda : sinon elle se fond dans le fond de page */
 }
 
 /* Barbier (sombre) : Cuir cognac, bois sombre et capitales franches. */
@@ -108,6 +109,7 @@
   --logo-2: #8c6a2a;
   --welcome-bg: radial-gradient(ellipse 55% 60% at 50% 42%, #fffdf7 0%, #f7f2e8 50%, #ece4d4 100%);
   color-scheme: light;
+  --week-today: var(--panel); /* colonne du jour de l'agenda : sinon elle se fond dans le fond de page */
 }
 
 /* Barbier jour (clair) : Le Barbier en plein jour. */
@@ -151,6 +153,7 @@
   --logo-2: #7f4319;
   --welcome-bg: repeating-linear-gradient(135deg, rgba(138,74,28,0.045) 0 22px, transparent 22px 44px), radial-gradient(ellipse 60% 65% at 50% 42%, #fbf7f0 0%, #f1ebe2 75%);
   color-scheme: light;
+  --week-today: var(--panel); /* colonne du jour de l'agenda : sinon elle se fond dans le fond de page */
 }
 
 /* Bleu porcelaine (clair) : Blanc porcelaine, bleu de faïence et logo doré. */
@@ -183,6 +186,7 @@
   --logo-2: #8f6d33;
   --welcome-bg: radial-gradient(ellipse 55% 60% at 50% 42%, #ffffff 0%, #f5f7fb 50%, #e6ebf4 100%);
   color-scheme: light;
+  --week-today: var(--panel); /* colonne du jour de l'agenda : sinon elle se fond dans le fond de page */
 }
 
 /* Ardoise & cuivre (sombre) : Ardoise bleutée, cuivre et rayures fines de costume. */
@@ -262,6 +266,7 @@
   --logo-2: #111111;
   --welcome-bg: linear-gradient(#f6f6f4, #f6f6f4);
   color-scheme: light;
+  --week-today: var(--panel); /* colonne du jour de l'agenda : sinon elle se fond dans le fond de page */
 }
 
 /* Lagon (clair) : Turquoise du lagon et sable blanc. */
@@ -294,6 +299,7 @@
   --logo-2: #0b6a6e;
   --welcome-bg: linear-gradient(180deg, #cfe9e5 0%, #e4efe8 38%, #f4f0e6 72%);
   color-scheme: light;
+  --week-today: var(--panel); /* colonne du jour de l'agenda : sinon elle se fond dans le fond de page */
 }
 
 /* Art déco (sombre) : Vert émeraude, or et géométrie des années 1920. */
@@ -373,6 +379,7 @@
   --logo-2: #1c1c1a;
   --welcome-bg: linear-gradient(rgba(28,28,26,0.045) 1px, transparent 1px) 0 0 / 40px 40px, linear-gradient(90deg, rgba(28,28,26,0.045) 1px, transparent 1px) 0 0 / 40px 40px, #e6e5e2;
   color-scheme: light;
+  --week-today: var(--panel); /* colonne du jour de l'agenda : sinon elle se fond dans le fond de page */
 }
 
 /* Cadre de l'accueil (Bienvenue, Merci) : Éditorial, Art déco (double) et Bleu porcelaine. */

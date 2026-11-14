@@ -1034,6 +1034,9 @@ button.photo:active { border-color: var(--accent); }
   .appt-block:not(.short) .appt-name { flex-wrap: wrap; column-gap: 4px; }
 }
 .day-col.is-today { background: color-mix(in srgb, var(--panel) 55%, var(--panel-2)); }
+/* Semaine : en thème clair, ce mélange a la couleur du fond de page et la colonne du jour paraissait fermée.
+   Les thèmes clairs la gardent blanche comme les autres (--week-today) ; l'en-tête or et les hachures la signalent. */
+.week .day-col.is-today { background: var(--week-today, color-mix(in srgb, var(--panel) 55%, var(--panel-2))); }
 /* Temps écoulé : fond de page hachuré, nettement à part du temps où l'on peut encore noter. */
 .past-veil {
   position: absolute;
