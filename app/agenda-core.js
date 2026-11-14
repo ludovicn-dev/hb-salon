@@ -159,6 +159,22 @@ export function nextOfDay(list, now) {
   return [...list].sort(byStart).find((a) => endOf(a) > now)?.id ?? null;
 }
 
+// Visite du jour d'un rendez-vous, parmi celles de son client (`mine` : ses rendez-vous du jour). Une visite
+// (datée de sa saisie) revient au dernier rendez-vous déjà commencé, avec une marge pour un client en avance ;
+// avant le premier, au premier. Parmi les siennes : celle « à valider » d'abord, sinon la plus récente.
+export const EARLY_MIN = 30;
+export function visitOfAppt(a, mine, visits) {
+  if (!visits?.length) return null;
+  const list = [...mine].sort(byStart);
+  const ownerOf = (v) => {
+    const t = new Date(v.date).getTime() + EARLY_MIN * 60000;
+    return list.filter((x) => new Date(x.start).getTime() <= t).at(-1) || list[0];
+  };
+  const own = visits.filter((v) => ownerOf(v)?.id === a.id);
+  const rank = (v) => (v.status === 'pending' ? 1 : 0);
+  return own.reduce((best, v) => (!best || rank(v) > rank(best) || (rank(v) === rank(best) && v.date > best.date) ? v : best), null);
+}
+
 // Groupes de rendez-vous qui se chevauchent : chacun prend une colonne du groupe.
 export function lanes(list) {
   const out = new Map();

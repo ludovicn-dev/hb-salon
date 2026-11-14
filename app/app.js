@@ -30,6 +30,8 @@ const S = {
   pinLockedUntil: 0,
   query: '',
   clients: [],
+  clientById: new Map(), // id -> fiche (rendez-vous de l'agenda, sans parcourir toutes les fiches)
+  firstNames: new Map(), // prénom normalisé -> nombre de fiches (homonymes de l'agenda)
   lastVisit: new Map(), // clientId -> date ISO (toutes visites : ordre de la liste)
   lastDone: new Map(), // clientId -> date ISO de la dernière visite validée (texte de la liste, export)
   pending: new Map(), // clientId -> nombre de visites non validées
@@ -67,7 +69,7 @@ const S = {
   refused: null, // sélecteur du créneau touché en vain pendant un déplacement (il luit en corail)
   nextAppt: null, // prochain rendez-vous du client affiché
   todayAppts: [], // rendez-vous du jour (accueil de l'espace coiffeur)
-  todayVisits: new Map(), // clientId -> visite du jour (celle « à valider » d'abord, sinon la dernière validée)
+  todayVisits: new Map(), // clientId -> visites du jour (chacune revient à un rendez-vous : visitOf)
   lockedModal: null, // fenêtre ouverte au verrouillage automatique, rouverte après le code
   modal: null, // { type: 'client' | 'backup' | 'confirm-delete' | 'photo' | 'appt' | ..., ... }
   modalReturn: null // élément à refocaliser à la fermeture
@@ -1062,13 +1064,13 @@ const fmtMin = (min) => `${Math.floor(min / 60)} h ${String(min % 60).padStart
 const hourLabel = (min) => (min % 60 ? fmtMin(min) : `${min / 60} h`);
 
 // Le nom actuel de la fiche (complété par le client entre-temps) ; la copie du rendez-vous sinon.
-const apptClient = (a) => (a.clientId ? S.clients.find((c) => c.id === a.clientId) : null);
+const apptClient = (a) => (a.clientId ? S.clientById.get(a.clientId) : null);
 // Nom court : le prénom, avec l'initiale du nom quand une autre fiche porte le même prénom.
 function apptName(a, full = false) {
   const c = apptClient(a);
   if (!c) return a.firstName || 'Sans nom';
   if (full || !c.firstName) return fullName(c);
-  const twin = c.lastName && S.clients.some((o) => o.id !== c.id && norm(o.firstName) === norm(c.firstName));
+  const twin = c.lastName && S.firstNames.get(norm(c.firstName)) > 1;
   return twin ? `${c.firstName} ${c.lastName.charAt(0)}.` : c.firstName;
 }
 const apptAllergy = (a) => apptClient(a)?.allergies || '';
@@ -1184,8 +1186,15 @@ function viewDayColumn(day, appts, now, today = null) {
   }
   items.sort((x, y) => x.min - y.min);
   const nowLine = isToday && nowMin > core.OPEN_MIN && nowMin < core.CLOSE_MIN ? `<i class="now-line" style="top:${pct(nowMin)}"></i>` : '';
-  return `<div class="day-col${isToday ? ' is-today' : ''}" role="group" aria-label="${esc(dayName + (isToday ? ', aujourd’hui' : ''))}">
+  return `<div class="day-col${isToday ? ' is-today' : ''}"${isToday ? ` data-stamp="${dayStamp(now)}"` : ''} role="group" aria-label="${esc(dayName + (isToday ? ', aujourd’hui' : ''))}">
     ${veil}${lines.join('')}${items.map((x) => x.html).join('')}${nowLine}</div>`;
+}
+
+// Ce qui change le dessin de la colonne du jour au fil des minutes : avant l'ouverture, chaque quart d'heure
+// entamé (le premier créneau libre recule), après la fermeture. Entre deux, trait et voile suivent sur place.
+function dayStamp(now) {
+  const m = core.minutesOf(now);
+  return m <= core.OPEN_MIN ? 'before' : m >= core.CLOSE_MIN ? 'after' : String(Math.ceil(m / core.STEP_MIN));
 }
 
 const HINT_SLOT = 'Touchez un créneau libre pour noter un rendez-vous.';
@@ -1338,8 +1347,9 @@ function scrollPlanToNow() {
   box.scrollTop = Math.max(0, colTop + line - 6);
 }
 
-// Visite du jour du client d'un rendez-vous (celle « à valider » d'abord, sinon la dernière validée).
-const visitOf = (a) => (a.clientId ? S.todayVisits.get(a.clientId) : null);
+// Visite du jour d'un rendez-vous : celle de son client qui lui revient (un client peut venir deux fois).
+const visitOf = (a) =>
+  a.clientId ? core.visitOfAppt(a, S.todayAppts.filter((x) => x.clientId === a.clientId), S.todayVisits.get(a.clientId)) : null;
 
 // État de la visite sur un rendez-vous du jour : à valider, validée, oubliée, ou en cours.
 function visitTag(v, done, live) {
@@ -1976,22 +1986,49 @@ async function hydratePhotos() {
 async function loadClients() {
   const [clients, visits] = await Promise.all([db.allClients(), db.allVisits()]);
   S.clients = clients;
+  S.clientById = new Map(clients.map((c) => [c.id, c]));
+  S.firstNames = new Map();
+  for (const c of clients) {
+    const f = norm(c.firstName);
+    S.firstNames.set(f, (S.firstNames.get(f) || 0) + 1);
+  }
   S.lastVisit = new Map();
   S.lastDone = new Map();
   S.pending = new Map();
   S.todayVisits = new Map();
   for (const v of visits) {
-    if (isToday(v.date)) {
-      const t = S.todayVisits.get(v.clientId);
-      const better = !t || (v.status === 'pending') > (t.status === 'pending') || (v.status === t.status && v.date > t.date);
-      if (better) S.todayVisits.set(v.clientId, v);
-    }
+    if (isToday(v.date)) S.todayVisits.set(v.clientId, [...(S.todayVisits.get(v.clientId) || []), v]);
     const cur = S.lastVisit.get(v.clientId);
     if (!cur || v.date > cur) S.lastVisit.set(v.clientId, v.date);
     const done = S.lastDone.get(v.clientId);
     if (v.status === 'done' && (!done || v.date > done)) S.lastDone.set(v.clientId, v.date);
     if (v.status === 'pending') S.pending.set(v.clientId, (S.pending.get(v.clientId) || 0) + 1);
   }
+}
+
+// Fiche effacée (suppression par le coiffeur, ou refus RGPD du client) : visites, photos et rendez-vous
+// passés effacés (aussi en ligne), rendez-vous à venir gardés sur la tablette seulement ; visite en cours
+// et bandeaux du client oubliés.
+async function eraseClient(id) {
+  const client = await db.getClient(id);
+  const kept = await db.detachAppointments(id, new Date().toISOString());
+  await db.deleteClient(id);
+  const parked = S.drafts.get(id);
+  dropDraft(parked?.draft);
+  dropDraft(parked?.stash);
+  S.drafts.delete(id);
+  S.savedDrafts.delete(id);
+  dropNotices((n) => n.clientId === id);
+  if (S.clientId === id) {
+    dropDraft(S.draft);
+    dropDraft(S.stash);
+    Object.assign(S, { clientId: null, client: null, draft: emptyDraft(), stash: null, history: [], nextAppt: null, tab: 'visit' });
+  }
+  S.photoCache.clear();
+  await loadClients();
+  await refreshAppts();
+  const who = hasName(client) ? `de ${fullName(client)}` : `créée le ${fmtDayShort(client.createdAt)}${client.phone ? ` (${fmtPhone(client.phone)})` : ''}`;
+  return { who, kept };
 }
 
 const pendingCount = () => S.history.filter((v) => v.status === 'pending').length;
@@ -2020,7 +2057,18 @@ let draftsSig = null; // dernier contenu écrit : un simple redessin ne réécri
 
 function saveDraftsSoon() {
   clearTimeout(draftsTimer);
-  draftsTimer = setTimeout(saveDrafts, 500);
+  draftsTimer = setTimeout(() => saveDrafts().catch(draftsFailed), 500);
+}
+
+// La copie des visites en cours n'a pas pu s'écrire (tablette pleine…) : la visite reste à l'écran, seul
+// le filet d'une appli fermée par Android manque. Dit une fois au coiffeur, sur la fiche même (un bandeau
+// d'information n'y paraît pas), jamais au client.
+let draftsWarned = false;
+function draftsFailed(err) {
+  console.error(err);
+  if (draftsWarned || S.view !== 'coiffeur') return;
+  draftsWarned = true;
+  toast('La visite en cours n’a pas pu être mise de côté sur la tablette (plus de place ?). Elle reste à l’écran, mais serait perdue si l’appli se fermait.', { error: true });
 }
 
 async function saveDrafts() {
@@ -2035,8 +2083,9 @@ async function saveDrafts() {
   // Les photos comptent par leur taille : la signature reste légère, et un ajout ou un retrait la change.
   const sig = JSON.stringify(out, (k, v) => (v instanceof Blob ? `blob:${v.size}` : v));
   if (sig === draftsSig) return;
+  draftsSig = sig; // posé avant l'écriture : un échec n'est pas retenté à chaque redessin, seulement au prochain changement
   await db.setSetting(DRAFTS_KEY, out);
-  draftsSig = sig;
+  draftsWarned = false;
 }
 
 // Le lendemain, les visites en cours de la veille sont oubliées (même appli restée ouverte la nuit) :
@@ -2353,7 +2402,7 @@ async function exportClients() {
   visits.filter((v) => v.status === 'done').forEach((v) => count.set(v.clientId, (count.get(v.clientId) || 0) + 1));
   const rows = [['Prénom', 'Nom', 'Téléphone', 'E-mail', 'Allergies / sensibilités', 'Consentement RGPD', 'Fiche créée le', 'Nb visites validées', 'Dernière visite validée']];
   [...S.clients]
-    .sort((a, b) => norm(a.lastName + a.firstName).localeCompare(norm(b.lastName + b.firstName)))
+    .sort((a, b) => norm(a.lastName).localeCompare(norm(b.lastName)) || norm(a.firstName).localeCompare(norm(b.firstName)))
     .forEach((c) =>
       rows.push([c.firstName, c.lastName, fmtPhone(c.phone), c.email, c.allergies, consentCsv(c), dateFr(c.createdAt), count.get(c.id) || 0, dateFr(S.lastDone.get(c.id))])
     );
@@ -2413,10 +2462,10 @@ function validateContact(val, strict, you = true) {
 // au même numéro (parent et enfant partagent souvent un téléphone, comme dans l'agenda : la fiche du même
 // prénom est la bonne). Sinon, toutes les fiches du numéro (la famille).
 function findDuplicates(val) {
-  const phone = digits(val('phone'));
+  const phone = localDigits(val('phone')); // +687 devant ou non, c'est le même numéro
   const first = norm(val('firstName'));
   const last = norm(val('lastName'));
-  const atPhone = phone.length >= 6 ? S.clients.filter((c) => digits(c.phone) === phone) : [];
+  const atPhone = phone.length >= 6 ? S.clients.filter((c) => localDigits(c.phone) === phone) : [];
   const same = S.clients.filter(
     (c) => first && norm(c.firstName) === first && ((last && norm(c.lastName) === last) || atPhone.includes(c))
   );
@@ -2759,27 +2808,9 @@ const actions = {
   // rendez-vous à venir gardés sur la tablette seulement.
   'confirm-delete-client': async (el) => {
     el.disabled = true;
-    const id = S.modal.id;
-    const client = await db.getClient(id);
-    const kept = await db.detachAppointments(id, new Date().toISOString());
-    await db.deleteClient(id);
-    const parked = S.drafts.get(id);
-    dropDraft(parked?.draft);
-    dropDraft(parked?.stash);
-    S.drafts.delete(id);
-    S.savedDrafts.delete(id);
-    dropNotices((n) => n.clientId === id);
-    if (S.clientId === id) {
-      dropDraft(S.draft);
-      dropDraft(S.stash);
-      Object.assign(S, { clientId: null, client: null, draft: emptyDraft(), stash: null, history: [], nextAppt: null, tab: 'visit' });
-    }
-    S.photoCache.clear();
-    await loadClients();
-    await refreshAppts();
+    const { who, kept } = await eraseClient(S.modal.id);
     S.modal = null;
     S.modalReturn = null;
-    const who = hasName(client) ? `de ${fullName(client)}` : `créée le ${fmtDayShort(client.createdAt)}${client.phone ? ` (${fmtPhone(client.phone)})` : ''}`;
     addNotice({ text: `Fiche ${who} supprimée.${keptText(kept)}` });
     render({ focus: CALM_FOCUS });
   },
@@ -2927,16 +2958,10 @@ const actions = {
   },
   'confirm-no-consent': async () => {
     if (!S.handedVisit) return; // second appui : la fiche est déjà effacée
-    const client = await db.getClient(S.handedVisit.clientId);
-    const kept = await db.detachAppointments(client.id, new Date().toISOString()); // rendez-vous à venir gardés sur la tablette
-    await db.deleteClient(client.id);
-    dropDraft(S.drafts.get(client.id)?.draft);
-    S.drafts.delete(client.id);
-    S.savedDrafts.delete(client.id);
-    dropNotices((n) => n.clientId === client.id);
-    const who = hasName(client) ? `de ${fullName(client)}` : `créée le ${fmtDayShort(client.createdAt)}${client.phone ? ` (${fmtPhone(client.phone)})` : ''}`;
+    const firstName = S.checkout.firstName.trim();
+    const { who, kept } = await eraseClient(S.handedVisit.clientId);
     addNotice({ text: `Fiche ${who} effacée : le client n’a pas donné son accord.${keptText(kept)}` });
-    finishCheckout(S.checkout.firstName.trim(), 'Votre fiche n’a pas été conservée.');
+    finishCheckout(firstName, 'Votre fiche n’a pas été conservée.');
   },
   'client-to-coiffeur': () => askPin(enterCoiffeur, () => go('client')),
   stay: () => {},
@@ -2958,12 +2983,22 @@ app.addEventListener('click', (e) => {
   if (S.note && !(el.dataset.action === 'undo' || (S.note.undo && (S.modal || KEEP_NOTE.has(el.dataset.action))))) S.note = null;
   const fn = actions[el.dataset.action];
   if (!fn) return;
+  // Double appui : tant que l'action d'un bouton n'a pas fini (écritures), un nouvel appui sur ce même
+  // bouton est ignoré, même redessiné entre-temps (repéré par son sélecteur, pas par l'élément).
+  const key = selectorOf(el) || el.dataset.action;
+  if (busy.has(key)) return;
+  let out;
   try {
-    Promise.resolve(fn(el, e)).catch((err) => reportFailure(err, el));
+    out = fn(el, e);
   } catch (err) {
     reportFailure(err, el);
+    return;
   }
+  if (!(out instanceof Promise)) return;
+  busy.add(key);
+  out.catch((err) => reportFailure(err, el)).finally(() => busy.delete(key));
 });
+const busy = new Set(); // boutons dont l'action est en cours
 
 function bindCheckout(el) {
   if (el.form?.dataset.form !== 'checkout' || !S.checkout) return;
@@ -3149,11 +3184,20 @@ async function onSubmit(form) {
       m.saving = false;
     }
     const apptId = isNew && m.apptId;
+    // La fiche est écrite : la fenêtre se ferme quoi qu'il arrive ensuite (un nouvel appui en créerait une seconde).
     S.modal = null;
     S.modalReturn = null;
-    await loadClients();
-    await linkAppt(apptId, saved);
-    await selectClient(saved.id);
+    try {
+      await loadClients();
+      await linkAppt(apptId, saved);
+      await selectClient(saved.id);
+    } catch (err) {
+      console.error(err);
+      await loadClients().catch(() => {}); // la nouvelle fiche doit être dans la liste où on l'envoie
+      render();
+      toast(`Fiche ${isNew ? 'créée' : 'enregistrée'}, mais la suite n’a pas abouti${apptId ? ' (rendez-vous à vérifier dans l’agenda)' : ''}. Retrouvez-la dans la liste des clients.`, { error: true });
+      return;
+    }
     render({ top: true, focus: '.client-head h1' });
     toast(isNew ? 'Fiche créée' : 'Fiche enregistrée');
   }
@@ -3420,6 +3464,11 @@ async function onPulled() {
   if (S.view === 'coiffeur' && !S.modal) render();
 }
 
+// Un doigt posé sur l'écran : pas de redessin à ce moment-là (l'appui serait perdu).
+let pressing = false;
+document.addEventListener('pointerdown', () => (pressing = true), { capture: true, passive: true });
+for (const type of ['pointerup', 'pointercancel']) document.addEventListener(type, () => (pressing = false), { capture: true, passive: true });
+
 // Heure de la barre du haut, trait « maintenant » et voile du temps écoulé, mis à jour chaque minute
 // sans redessiner l'écran (un rendu en plein appui ferait perdre le toucher).
 function tickClock() {
@@ -3440,9 +3489,13 @@ function tickClock() {
   }
   const clock = document.getElementById('clock');
   if (clock) clock.textContent = fmtClock();
-  const min = core.minutesOf(new Date());
+  const now = new Date();
+  const min = core.minutesOf(now);
   const col = app.querySelector('.day-col.is-today');
-  if (col && min > core.OPEN_MIN && min < core.CLOSE_MIN) {
+  // Ouverture, fermeture, quart d'heure passé : les créneaux changent, la colonne est redessinée, jamais
+  // sous le doigt ni derrière une fenêtre (essayé de nouveau la minute suivante).
+  if (col && col.dataset.stamp !== dayStamp(now) && !pressing && !S.modal && S.view === 'coiffeur') render();
+  else if (col && min > core.OPEN_MIN && min < core.CLOSE_MIN) {
     const line = col.querySelector('.now-line');
     const veil = col.querySelector('.past-veil');
     if (line) line.style.top = pct(min);

@@ -20,6 +20,7 @@ import {
   checkSlot,
   freeUntil,
   nextOfDay,
+  visitOfAppt,
   lanes,
   lastColor,
   agoText,
@@ -154,6 +155,28 @@ test('nextOfDay : le premier pas terminé', () => {
   const list = [appt('c', iso(7, 13), 60), appt('a', iso(7, 8, 30), 45), appt('b', iso(7, 9), 150)];
   assert.equal(nextOfDay(list, d(7, 9, 45)), 'b');
   assert.equal(nextOfDay(list, d(7, 18)), null);
+});
+
+test('visitOfAppt : deux rendez-vous du même client dans la journée', () => {
+  const am = appt('am', iso(7, 9), 60);
+  const pm = appt('pm', iso(7, 15), 60);
+  const morning = { id: 'v1', date: iso(7, 9, 40), status: 'done' };
+  assert.equal(visitOfAppt(am, [pm, am], [morning]), morning);
+  assert.equal(visitOfAppt(pm, [pm, am], [morning]), null); // l'après-midi n'a pas encore eu lieu
+  const afternoon = { id: 'v2', date: iso(7, 14, 45), status: 'pending' }; // client en avance
+  assert.equal(visitOfAppt(pm, [am, pm], [morning, afternoon]), afternoon);
+  assert.equal(visitOfAppt(am, [am, pm], [morning, afternoon]), morning);
+});
+
+test('visitOfAppt : un seul rendez-vous, « à valider » d’abord', () => {
+  const a = appt('a', iso(7, 10), 60);
+  const early = { id: 'v0', date: iso(7, 8, 45), status: 'done' }; // avant le rendez-vous : il lui revient
+  const done = { id: 'v1', date: iso(7, 11), status: 'done' };
+  const pending = { id: 'v2', date: iso(7, 10, 50), status: 'pending' };
+  assert.equal(visitOfAppt(a, [a], [early]), early);
+  assert.equal(visitOfAppt(a, [a], [early, done]), done);
+  assert.equal(visitOfAppt(a, [a], [done, pending]), pending);
+  assert.equal(visitOfAppt(a, [a], undefined), null);
 });
 
 test('lanes : chevauchements côte à côte', () => {
